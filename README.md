@@ -1,4 +1,4 @@
-###Introduction
+### Introduction
 
 This document describes the use of the R script *Glycobinder* and its key elements. Glycobinder allows for streamlined data processing of multiplexed glycopeptide quantitative mass spectrometry data. It relies on usage of external tools (s. below) that are not distributed with the script and have to be requested and installed separately. *GlycoBinder* is a free software and distributed under GNU GPL v3.0 license (for details see the GNU General Public License [https://www.gnu.org/licenses/]). This license does not apply to external software *Glycobinder* relies on. For this, different license terms may apply.
 
@@ -30,7 +30,7 @@ Liu, M.Q., Zeng, W.F., Fang, P., Cao, W.Q., Liu, C., Yan, G.Q., Zhang, Y., Peng,
 
 *GlycoBinder* does not provide those tools and a user needs to request and install the tools by himself prior to working with *GlycoBinder*. To our knowledge, the tools are freely available upon request.
 
-###Requirements for the processing environment
+### Requirements for the processing environment
 
 *GlycoBinder* was developed and tested on machines running on 64-bit platforms under Windows 10 and R programming language versions 3.5.0 or higher. Respectively, it requires an R programming language (versions 3.5.0 or above) to be installed on your machine including *data.table*, *dplyr*, *future.apply*, and *stringr* packages. In case those packages are not installed, GlycoBinder will make an attempt to install them.
 
@@ -39,7 +39,7 @@ Since *GlycoBinder* relies on external tools, all of them should be installed an
 Depending on the number of raw files and their size, *GlycoBinder* might require a large amount of RAM to process the data.
 Per default, it will use number_of_awailable_processors - 2 threads on your machine for processing the data (this number might be different for external tools). We recommend to reserve at least 1GB of free RAM per running process (e.g. for a machine with 8 cores, one should aim for at least 6 GB of free RAM space). If you would like to restrict the number of processors used by *GlycoBinder*, please, consult the following section regarding additional parameters to the script.
 
-###Processing steps in brief
+### Processing steps in brief
 
 Glycobinder is designed for processing *.raw* files acquired on Thermo Fisher Orbitrap instruments. It allows for combination of MS spectra resulting from MS2 and SPS-MS3 scans and use of isobaric peptide labeling reagents, e.g. TMT, for quantification.
 
@@ -60,7 +60,7 @@ In brief, *GlycoBinder* makes following steps in the data processing:
 7. *GlycoBinder* combines *pGlyco 2.0* search results and reporter ion intensities extracted by *RawTools*. Resulting table is used to prepare quantitative data at different levels: at the levels of glycosylated peptides, glycoforms, glycosites, and glycans.
 
 
-###Using GlycoBinder
+### Using GlycoBinder
 
 To execute *GlycoBinder*, follow the steps:
 
@@ -78,7 +78,7 @@ Suppose, *.raw* files, the *.fasta* file, and *GlycoBinder.R* script are located
 C:/data>Rscript.exe "Glycobinder.R" --wd "C:/data" --reporter_ion TMT6 
 ```
 
-###Additional parameters
+### Additional parameters
 
 Following parameters modify default *GlycoBinder* behavior if added as command line arguments:
 
