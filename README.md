@@ -2,7 +2,7 @@
 
 ### Introduction
 
-This document describes the use of the R script *Glycobinder* and its key elements. Glycobinder allows for streamlined data processing of multiplexed glycopeptide quantitative mass spectrometry data. It relies on usage of external tools (s. below) that are not distributed with the script and have to be requested and installed separately. *GlycoBinder* is a free software and distributed under GNU GPL v3.0 license (for details see the GNU General Public License [https://www.gnu.org/licenses/]). This license does not apply to external software *Glycobinder* relies on. For this, different license terms may apply.
+This document describes the use of the R script *GlycoBinder* and its key elements. *GlycoBinder* allows for streamlined data processing of multiplexed glycopeptide quantitative mass spectrometry data. It relies on usage of external tools (s. below) that are not distributed with the script and have to be requested and installed separately. *GlycoBinder* is a free software and distributed under GNU GPL v3.0 license (for details see the GNU General Public License [https://www.gnu.org/licenses/]). This license does not apply to external software *GlycoBinder* relies on. For this, different license terms may apply.
 
 ### Programming Language
 
@@ -28,22 +28,22 @@ Yuan, Z.F.E., Liu, C., Wang, H.P., Sun, R.X., Fu, Y., Zhang, J.F., Wang, L.H., C
 
 4. pGlyco, version 2.2.0 [http://pfind.net/software/pGlyco/index.html]
 
-Liu, M.Q., Zeng, W.F., Fang, P., Cao, W.Q., Liu, C., Yan, G.Q., Zhang, Y., Peng, C., Wu, J.Q., Zhang, X.J. and Tu, H.J., 2017. pGlyco 2.0 enables precision N-glycoproteomics with comprehensive quality control and one-step mass spectrometry for intact glycopeptide identification. Nature communications, 8(1), p.438.
+Liu, M.Q., Zeng, W.F., Fang, P., Cao, W.Q., Liu, C., Yan, G.Q., Zhang, Y., Peng, C., Wu, J.Q., Zhang, X.J. and Tu, H.J., 2017. *pGlyco 2.0* enables precision N-glycoproteomics with comprehensive quality control and one-step mass spectrometry for intact glycopeptide identification. Nature communications, 8(1), p.438.
 
 *GlycoBinder* does not provide those tools and a user needs to request and install the tools by himself prior to working with *GlycoBinder*. To our knowledge, the tools are freely available upon request.
 
 ### Requirements for the processing environment
 
-*GlycoBinder* was developed and tested on machines running on 64-bit platforms under Windows 10 and R programming language versions 3.5.0 or higher. Respectively, it requires an R programming language (versions 3.5.0 or above) to be installed on your machine including *data.table*, *dplyr*, *future.apply*, and *stringr* packages. In case those packages are not installed, GlycoBinder will make an attempt to install them.
+*GlycoBinder* was developed and tested on machines running on 64-bit platforms under Windows 10 and R programming language versions 3.5.0 or higher. Respectively, it requires an R programming language (versions 3.5.0 or above) to be installed on your machine including *data.table*, *dplyr*, *future.apply*, and *stringr* packages. In case those packages are not installed, *GlycoBinder* will make an attempt to install them.
 
-Since *GlycoBinder* relies on external tools, all of them should be installed and configured prior to using the script. All external tools have to be added to the system path of the machine *GlycoBnder* is working on. Later allows for envoking the tool without specifying an exact path to it that might differ from one computer to another.To do so, search for `Edit environment variables for your account` and then click on it. Under "User Variables" select "PATH" and click the `Edit` button (make sure you are changing the "PATH" variable for a user account you will be later working). Select `New` and then `Browse`. Navigate to the directory where the executable of the tool is located. Repeat the same procedure for all the tools. We also suggest to add the file path to the folder containing "Rscript.exe" file, which is needed to run GlycoBinder using the command line. "Rscript.exe" is typically located within the folder containing files belonging to R, e.g. *C:/Program Files/R/R-3.5.0/bin/x64/*. After the enviromental variables are configured, please check if the tools can be accessed from the command line directly. For this, open the command line and type one by one: `RScript`, `rawtools`, `msconvert`, `pparse`, `pglyco`. Hit `Enter` after each command. Make sure that system can find each tool and returns help information to the console. A tutorial how to configure environmental variables can be found here: https://github.com/kevinkovalchik/RawTools/wiki/Download-and-prepare-RawTools-for-Windows  
+Since *GlycoBinder* relies on external tools, all of them should be installed and configured prior to using the script. All external tools have to be added to the system path of the machine *GlycoBnder* is working on. Later allows for envoking the tool without specifying an exact path to it that might differ from one computer to another.To do so, search for `Edit environment variables for your account` and then click on it. Under "User Variables" select "PATH" and click the `Edit` button (make sure you are changing the "PATH" variable for a user account you will be later working). Select `New` and then `Browse`. Navigate to the directory where the executable of the tool is located. Repeat the same procedure for all the tools. We also suggest to add the file path to the folder containing "Rscript.exe" file, which is needed to run *GlycoBinder* using the command line. "Rscript.exe" is typically located within the folder containing files belonging to R, e.g. *C:/Program Files/R/R-3.5.0/bin/x64/*. After the enviromental variables are configured, please check if the tools can be accessed from the command line directly. For this, open the command line and type one by one: `RScript`, `rawtools`, `msconvert`, `pparse`, `pglyco`. Hit `Enter` after each command. Make sure that system can find each tool and returns help information to the console. A tutorial how to configure environmental variables can be found here: https://github.com/kevinkovalchik/RawTools/wiki/Download-and-prepare-RawTools-for-Windows  
 
 Depending on the number of raw files and their size, *GlycoBinder* might require a large amount of RAM to process the data.
 Per default, it will use number_of_awailable_processors - 2 threads on your machine for processing the data (this number might be different for external tools). We recommend to reserve at least 1GB of free RAM per running process (e.g. for a machine with 8 cores, one should aim for at least 6 GB of free RAM space). If you would like to restrict the number of processors used by *GlycoBinder*, please, consult the following section regarding additional parameters to the script.
 
 ### Processing steps in brief
 
-Glycobinder is designed for processing *.raw* files acquired on Thermo Fisher Orbitrap instruments. It allows for combination of MS spectra resulting from MS2 and SPS-MS3 scans and use of isobaric peptide labeling reagents, e.g. TMT, for quantification.
+GlycoBinder is designed for processing *.raw* files acquired on Thermo Fisher Orbitrap instruments. It allows for combination of MS spectra resulting from MS2 and SPS-MS3 scans and use of isobaric peptide labeling reagents, e.g. TMT, for quantification.
 
 In brief, *GlycoBinder* makes following steps in the data processing:
 
@@ -53,11 +53,11 @@ In brief, *GlycoBinder* makes following steps in the data processing:
 
 3. *pParse* recalibrates the monoisotopic peaks of precursors and outputs an *.mgf* file containing MS2 scans.
 
-4. *GlycoBinder* combines ion intensities of matching MS2 and MS3 spectra as reported by *RawTools*. MS2 and MS3 spectra are extracted from *msconvert*-produced *.mgf* file and merged based on the specified ion tolerance window. *Glycobinder* replaces MS2 spectra in the *pParse* output by combined MS2/MS3 spectra. Modified *pParse* output file is used as an input for *pGlyco 2.0*.
+4. *GlycoBinder* combines ion intensities of matching MS2 and MS3 spectra as reported by *RawTools*. MS2 and MS3 spectra are extracted from *msconvert*-produced *.mgf* file and merged based on the specified ion tolerance window. *GlycoBinder* replaces MS2 spectra in the *pParse* output by combined MS2/MS3 spectra. Modified *pParse* output file is used as an input for *pGlyco 2.0*.
 
 5. *pGlyco 2.0* uses the combined spectra to search for peptides and associated glycans. After the first *pGlyco 2.0*-search is finished, results are filtered based on a specified FDR cutoff.
 
-6. Optionally, a second *pGlyco 2.0*-search is performed on a smaller protein data base. For this, only proteins containing modified peptides identified during the first *pGlyco 2.0*-search and passing the total FDR threshold are retained in the protein sequence database used for the second peptide search. Please, consult the section about additional parameters to GlycoBinder in order to disable the second *pGlyco 2.0* search.
+6. Optionally, a second *pGlyco 2.0*-search is performed on a smaller protein data base. For this, only proteins containing modified peptides identified during the first *pGlyco 2.0*-search and passing the total FDR threshold are retained in the protein sequence database used for the second peptide search. Please, consult the section about additional parameters to *GlycoBinder* in order to disable the second *pGlyco 2.0* search.
 
 7. *GlycoBinder* combines *pGlyco 2.0* search results and reporter ion intensities extracted by *RawTools*. Resulting table is used to prepare quantitative data at different levels: at the levels of glycosylated peptides, glycoforms, glycosites, and glycans.
 
@@ -77,7 +77,7 @@ To execute *GlycoBinder*, follow the steps:
 Suppose, *.raw* files, the *.fasta* file, and *GlycoBinder.R* script are located in *C:/data* folder, and peptides were labeled using TMT6plex reagents, the minimum required input would look like:
 
 ```
-C:/data>Rscript.exe "Glycobinder.R" --wd "C:/data" --reporter_ion TMT6 
+C:/data>Rscript.exe "GlycoBinder.R" --wd "C:/data" --reporter_ion TMT6 
 ```
 
 ### Additional parameters
@@ -85,7 +85,7 @@ C:/data>Rscript.exe "Glycobinder.R" --wd "C:/data" --reporter_ion TMT6
 Following parameters modify default *GlycoBinder* behavior if added as command line arguments:
 
 1. `--verbose`  
-Forces GlycoBinder to be more chatty.
+Forces *GlycoBinder* to be more chatty.
    
 2. `--tol_unit`  
 Specify tolerance unit used for matching ions from corresponding MS2 and MS3 spectra. Supported values are `ppm` and `Th`, e.g. `--tol_unit ppm` (default).
@@ -97,13 +97,13 @@ Specify tolerance for matching ions from corresponding MS2 and MS3 spectra. Inte
 Specify total FDR cutoff for *pGlyco 2.0* search results, e.g. `--pglyco_fdr_threshold 0.02` (default) sets maximum total FDR to 2%.
 
 5. `--no_second_search`  
-Prevent GlycoBinder from running second *pGlyco 2.0* search on reduced data base.
+Prevent *GlycoBinder* from running second *pGlyco 2.0* search on reduced data base.
 
 6. `--report_intermediate_results`  
-Forces GlycoBinder to keep intermediate files (after *pGlyco 2.0* search).
+Forces *GlycoBinder* to keep intermediate files (after *pGlyco 2.0* search).
 
 7. `--nr_threads`  
-Specify number of available processors for GlycoBinder processing. It can take values between 1 and the number of available processors - 2 (default). 
+Specify number of available processors for *GlycoBinder* processing. It can take values between 1 and the number of available processors - 2 (default). 
 
 8. `--seq_wind_size`  
 The parameter specifies the number of amino acids around the modification site. It is applied to extract sequence window around modification site from protein sequences. Sequence windows are needed to combine quantitative information on glycoform level. Default paramter is 7, e.g. `--seq_wind_size 7`. Seven amino acid  before the modified site and seven amino acids after the modified site will be extracted, resulting in the 15 amino acids long sequence window.  
@@ -114,15 +114,15 @@ Per default, external tools are started using parameters listed below. The major
 
 1. *RawTools*  
 `rawtools -parse -d [input directory] -out [output directory] -q -r [reporter ions type] -R -u`  
-*RawTools* output one *\_Matrix.txt* file per *.raw* file. Output file names are created by appending *\_Matrix.txt* to the *.raw* file name including extension (example: "raw_file.raw" becomes "raw_file.raw_Matrix.txt"). *RawTools* output files are located in *./rawtools_output* folder within the GlycoBinder working directory (location of the *.raw* files). One can process *raw* files externally and then copy the resulting *\_Matrix.txt* files into the *./rawtools_output* folder. If every *.raw* file has a corresponding *\_Matrix.txt* file, GlycoBinder will skip *RawTools* processing.
+*RawTools* output one *\_Matrix.txt* file per *.raw* file. Output file names are created by appending *\_Matrix.txt* to the *.raw* file name including extension (example: "raw_file.raw" becomes "raw_file.raw_Matrix.txt"). *RawTools* output files are located in *./rawtools_output* folder within the *GlycoBinder* working directory (location of the *.raw* files). One can process *raw* files externally and then copy the resulting *\_Matrix.txt* files into the *./rawtools_output* folder. If every *.raw* file has a corresponding *\_Matrix.txt* file, *GlycoBinder* will skip *RawTools* processing.
 
 2. *msconvert*  
 `msconvert [file] --outdir [output directory] --mgf --ignoreUnknownInstrumentError --filter "peakPicking vendor" --filter "defaultArrayLength 1-" --filter "titleMaker <RunId>.<ScanNumber>.<ScanNumber>.<ChargeState>"`  
-Similar to *RawTools*, *msconvert* outputs one *.mgf* file per *.raw* file in the GlycoBinder working directory. Output file names consist of the original file name without *.raw* extension substituted by *.mgf*. *msconvert* output files are located in *./msconvert_ouput* folder within GlycoBinder working directory. If all *.mgf* files are present in there, GlycoBinder skips *msconvert* processing step. For correct processing of *.mgf* files generated by *msconvert*, each scan within an *.mgf* file should contain a line starting with "TITLE=" and containing a scan number flanked by dots, e.g. ".355.".
+Similar to *RawTools*, *msconvert* outputs one *.mgf* file per *.raw* file in the *GlycoBinder* working directory. Output file names consist of the original file name without *.raw* extension substituted by *.mgf*. *msconvert* output files are located in *./msconvert_ouput* folder within *GlycoBinder* working directory. If all *.mgf* files are present in there, *GlycoBinder* skips *msconvert* processing step. For correct processing of *.mgf* files generated by *msconvert*, each scan within an *.mgf* file should contain a line starting with "TITLE=" and containing a scan number flanked by dots, e.g. ".355.".
 
 3. *pParse*
 `pParse.exe -D [file] -O [output directory] -p, 0`  
-pParse output files are located in *./pparse_output* folder and named as original *.raw* files with *.raw* file extension substituted by *\_[Type of Detector, e.g. CDFT of ITFT].mgf*. Similarly, pParse processing is skipped if all output files are found within the *./pparse_output* folder. After merging of MS2 and MS3 spectra, MS2 spectra within *pParse* output files are substituted by the combined MS2/MS3 spectra. The modified *pParse* output files are renamed to *base_raw_file_name_pParse_mod.mgf* files and saved in the same *./pparse_output* folder. If all *\_pParse_mod.mgf* are found in the *./pparse_output* folder, *pParse* processing and merging of the MS2 and MS3 spectra are skipped.
+pParse output files are located in *./pparse_output* folder and named as original *.raw* files with *.raw* file extension substituted by *\_[Type of Detector, e.g. CDFT of ITFT].mgf*. Similarly, *GlycoBinder* processing is skipped if all output files are found within the *./pparse_output* folder. After merging of MS2 and MS3 spectra, MS2 spectra within *pParse* output files are substituted by the combined MS2/MS3 spectra. The modified *pParse* output files are renamed to *base_raw_file_name_pParse_mod.mgf* files and saved in the same *./pparse_output* folder. If all *\_pParse_mod.mgf* are found in the *./pparse_output* folder, *pParse* processing and merging of the MS2 and MS3 spectra are skipped.
 
 4. *pGlyco 2.0*  
 `pGlycodb.exe [pglyco configuration file] && pGlycoFDR.exe -p [pglyco configuration file] -r [output file name] && pGlycoProInfer.exe`
@@ -192,7 +192,7 @@ First, make sure that you gave *GlycoBinder* enough time to finish the task. Che
 3. *GlycoBinder* cannot find working directory  
 Check that the file path specified after `--wd` argument does not contain white spaces or properly enquoted. Same applies when specifying the location of the script itself.
 
-4. *Glycobinder* cannot find *.raw* files  
+4. *GlycoBinder* cannot find *.raw* files  
 Make sure that *.raw* files are located in the specified working directory and have *.raw* extension.
 
 5. Minimal requirements to run *GlycoBinder* are:
