@@ -109,7 +109,7 @@ tolerance_unit <- args[which(args == "--tol_unit") + 1]
 if(length(tolerance_unit) != 1 || !tolerance_unit %in% c("ppm", "Th")) {
   
   tolerance_unit <- "ppm"
-  if(verbose) message("set tolerance unit to", tolerance_unit)
+  if(verbose) message("set tolerance unit to ", tolerance_unit)
   
 }
 
@@ -138,7 +138,7 @@ pglyco_fdr_threshold <- as.numeric(args[which(args == "--pglyco_fdr_threshold") 
 if(length(pglyco_fdr_threshold) != 1 || is.na(pglyco_fdr_threshold) || pglyco_fdr_threshold <= 0 || pglyco_fdr_threshold >= 1){
   
   pglyco_fdr_threshold <- 0.02
-  if(verbose) message("set pglyco fdr threshold to", pglyco_fdr_threshold)
+  if(verbose) message("set pglyco fdr threshold to ", pglyco_fdr_threshold)
   
 }
 
