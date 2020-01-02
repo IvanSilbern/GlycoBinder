@@ -628,7 +628,7 @@ run_msconvert <- function(file_name, out_dir){
   wd <- getwd()
   
   # prepare system calls
-  msConvert_args <- paste(paste0('"', file_name, '"'), '--outdir', paste0('"', wd, '/msconvert_output', '"'), '--mgf', '--ignoreUnknownInstrumentError', '--filter', paste0('"', 'peakPicking vendor','"'), '--filter', paste0('"', 'defaultArrayLength 1-', '"'), '--filter', paste0('"', 'titleMaker <RunId>.<ScanNumber>.<ScanNumber>.<ChargeState>', '"'), collapse = " ")
+  msConvert_args <- paste(paste0('"', file_name, '"'), '--outdir', paste0('"', wd, '/msconvert_output', '"'), '--mgf', '--ignoreUnknownInstrumentError', '--singleThreaded', '--filter', paste0('"', 'peakPicking vendor','"'), '--filter', paste0('"', 'defaultArrayLength 1-', '"'), '--filter', paste0('"', 'titleMaker <RunId>.<ScanNumber>.<ScanNumber>.<ChargeState>', '"'), collapse = " ")
   
   shell(cmd = paste("msconvert", msConvert_args, '& echo "done" >>', paste0('"', out_dir, '/msconvert_done.txt', '"'), collapse = " "), wait = FALSE, ignore.stdout = TRUE)
   
