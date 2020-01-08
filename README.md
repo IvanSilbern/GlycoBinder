@@ -49,7 +49,7 @@ In brief, *GlycoBinder* makes following steps in the data processing:
 
 1. *RawTools* is used for extracting quantitative information (reporter ion intensities) from Thermo *.raw* files and assigning MS3 scan to corresponding MS2 scans.
 
-2. *msconvert* transforms *.raw* files into *.mgf* file format and centroids data by applying vendor peak picking algorithm. MS2 and MS3 scans are preserved in the *.mgf* file.
+2. *msconvert* transforms *.raw* files into *.mgf* file format and centroids data by applying a vendor-specific peak picking algorithm. MS2 and MS3 scans are preserved in the *.mgf* file.
 
 3. *pParse* recalibrates the monoisotopic peaks of precursors and outputs an *.mgf* file containing MS2 scans.
 
@@ -57,9 +57,9 @@ In brief, *GlycoBinder* makes following steps in the data processing:
 
 5. *pGlyco 2.0* uses the combined spectra to search for peptides and associated glycans. After the first *pGlyco 2.0*-search is finished, results are filtered based on a specified FDR cutoff.
 
-6. Optionally, a second *pGlyco 2.0*-search is performed on a smaller protein data base. For this, only proteins containing modified peptides identified during the first *pGlyco 2.0*-search and passing the total FDR threshold are retained in the protein sequence database used for the second peptide search. Please, consult the section about additional parameters to *GlycoBinder* in order to disable the second *pGlyco 2.0* search.
+6. Optionally, a second *pGlyco 2.0*-search is performed on a smaller protein data base. For this, only glycoproteins identified in the first round of *pGlyco 2.0*-search and passing an FDR threshold are retained in the protein sequence database and used for the second round of glycopeptide search. Please, consult the section about additional parameters to *GlycoBinder* in order to disable the second *pGlyco 2.0* search.
 
-7. *GlycoBinder* combines *pGlyco 2.0* search results and reporter ion intensities extracted by *RawTools*. Resulting table is used to prepare quantitative data at different levels: at the levels of glycosylated peptides, glycoforms, glycosites, and glycans.
+7. *GlycoBinder* combines *pGlyco 2.0* search results and reporter ion intensities extracted by *RawTools*. Based on the combined *pGlyco 2.0* and *RawTools* output, *GlycoBinder* organizes quantitative results at different levels: at the levels of glycosylated peptides, glycoforms, glycosites, and glycans. A separate data table is reported for each level that contains unique identifier of the data entry, cross-references to other levels, quantification information in the form of the summed reporter ion intensities and necessary metadata.
 
 
 ### Using GlycoBinder
@@ -71,7 +71,7 @@ To execute *GlycoBinder*, follow the steps:
 2. Specify the path to the *Rscript.exe* (or just "Rscript.exe" if the file path is set in environmental variables)
 3. Specify the path to the *GlycoBinder.R*
 4. Specify the path to the working directory using `--wd` flag
-5. Specify peptide labeling reagent after `--reporter_ion` flag (values supported by *RawTools* are allowed: "TMT0", `TMT2`, `TMT6`, `TMT10`, `TMT11`, `iTRAQ4`, `iTRAQ8`), e.g. `--reporter_ion TMT6`
+5. Specify peptide labeling reagent after `--reporter_ion` flag (values supported by *RawTools* are allowed: `TMT0`, `TMT2`, `TMT6`, `TMT10`, `TMT11`, `iTRAQ4`, `iTRAQ8`), e.g. `--reporter_ion TMT6`
 6. Specify additional arguments (s. below)
 
 Suppose, *.raw* files, the *.fasta* file, and *GlycoBinder.R* script are located in *C:/data* folder, and peptides were labeled using TMT6plex reagents, the minimum required input would look like:
@@ -176,10 +176,10 @@ Based on `pGlyco_Scans.txt`, respective reporter ion intensities are combined (s
 The table is based on `pGlyco_modified_peptides.txt` table. It combines quantitative information based on sequence window and a particular glycan structure. Sequence windows are first extracted from the amino acid sequences of corresponding proteins. Per default, +/-7 amino acids are extracted around the modification site (can be changed if specifying `--seq_wind_size` parameter). Peptides are grouped based on modification site they share. Sequence windows extracted from proteins that could potentially contribute to those peptides are ranked based on the number of peptides in the group each sequence window can explain. Ties are broken by using protein ranking (s. description below). Peptides shared among several sequence windows are assigned to the sequence window that encompasses the majority of the peptides within the peptide group. If there are peptides that cannot be explained by the leading sequence window, those peptides are distributed between other sequence windows accordingly. Intensity information is then combined based on sequence window and glycan structure (reported in `seq_win` and `Glycan(H,N,A,G,F)` columns, respectively). Columns `modpept_ids`, `Scan`, `pGlyco_ids`, `Peptide`, `GlySite`, `GlyID` represent a concatenation of entries in respective columns in the `pGlyco_modified_peptides.txt` table. ";" is used as a separator by concatenation. `modpept_ids` refers to the `id` column in the `pGlyco_modified_peptides.txt` table. It contains the respective ids of the peptides that were combined by particular sequence window and glycan structure.
 
 5. `pGlyco_glycosites.txt`  
-The table is based on `pGlyco_modified_peptides.txt` table. The combination is based on sequence window information only, irrespective of the glycan structure. Accordingly, it contains `seq_win` column with sequence window information, `modpept_id` column that refers to `id` column in the `pGlyco_modified_peptides.txt`. Columns `Scan`, `pGlyco_ids`, `Peptide`, `GlySite`, `GlyID`, `Glycan(H,N,A,G,F)`, `GlyMass` are concatenaions of respective columns in `pGlyco_modified_peptides.txt` using ";" as a separator. `Leading_Protein` and `Leading_ProSite` are selected according to protein rank. Proteins are ranked based on the number of unique peptides (highest priority), number of all peptides, number of glycoforms, whether it is a swiss prot entry, and whether it is an isoform (lowest priority). Proteins that have greater number of unique peptides/total peptides/glycoforms, annotated in SwissProt data base and are not isoforms, receive a higher rank. The highest rank is 1. The rank is unique and ties, if occur, are broken by alphabetic order.
+The table is based on `pGlyco_modified_peptides.txt` table. The combination is based on sequence window information only, irrespective of the glycan structure. Accordingly, it contains `seq_win` column with sequence window information, `modpept_id` column that refers to `id` column in the `pGlyco_modified_peptides.txt`. Columns `Scan`, `pGlyco_ids`, `Peptide`, `GlySite`, `GlyID`, `Glycan(H,N,A,G,F)`, `GlyMass` are concatenaions of respective columns in `pGlyco_modified_peptides.txt` using ";" as a separator. `Leading_Protein` and `Leading_ProSite` are selected according to protein rank. Proteins are ranked based on the number of unique peptides (highest priority), number of all peptides, number of glycoforms, whether it is a Swiss-Prot entry, and whether it is an isoform (lowest priority). Proteins that have greater number of unique peptides/total peptides/glycoforms, annotated in SwissProt data base and are not isoforms, receive a higher rank. The highest rank is 1. The rank is unique and ties, if occur, are broken by alphabetic order.
 
 6. `pGlyco_glycans.txt`  
-The table is based on `pGlyco_modified_peptides.txt` table. The combination is based on glycan structure only, irrespective of the peptide sequence (using `Glycan(H,N,A,G,F)` column). As before, `modpept_id` column refers to `id` column in the `pGlyco_modified_peptides.txt`. Columns `pGlyco_ids`, `Scan`, `Leading_Protein`, `Leading_ProSite` are concatenations of respective columns in `pGlyco_modified_peptides.txt` using ";" as a separator.
+The table is based on `pGlyco_modified_peptides.txt` table. The combination is based on glycan structure only (`Glycan(H,N,A,G,F)` column), irrespective of the peptide sequence. As before, `modpept_id` column refers to `id` column in the `pGlyco_modified_peptides.txt`. Columns `pGlyco_ids`, `Scan`, `Leading_Protein`, `Leading_ProSite` are concatenations of respective columns in `pGlyco_modified_peptides.txt` using ";" as a separator.
 
 ### Potential Problems / Special use cases
 
