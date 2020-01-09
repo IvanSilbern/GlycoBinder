@@ -43,7 +43,7 @@ Per default, it will use number_of_awailable_processors - 2 threads on your mach
 
 ### Processing steps in brief
 
-GlycoBinder is designed for processing *.raw* files acquired on Thermo Fisher Orbitrap instruments. It allows for combination of MS spectra resulting from MS2 and SPS-MS3 scans and use of isobaric peptide labeling reagents, e.g. TMT, for quantification.
+GlycoBinder is designed for processing *.raw* files acquired on Thermo Fisher Orbitrap instruments. It combines MS spectra resulting from MS2 and SPS-MS3 scans and utilizes reporter ion intensities generated from isobaric peptide labeling reagents, e.g. TMT, for quantification.
 
 In brief, *GlycoBinder* makes following steps in the data processing:
 
