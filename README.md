@@ -66,10 +66,10 @@ In brief, *GlycoBinder* makes following steps in the data processing:
 
 To execute *GlycoBinder*, follow the steps:
 
-1. Prepare a working directory containing *.raw* files to be processed and *.fasta* file containing protein sequences.
+1. Prepare a working directory containing *.raw* files to be processed and *.fasta* file containing amino acid sequences of  proteins.
 1. Open the command line
 2. Specify the path to the *Rscript.exe* (or just "Rscript.exe" if the file path is set in environmental variables)
-3. Specify the path to the *GlycoBinder.R*
+3. Specify the path to the *GlycoBinder.R* file
 4. Specify the path to the working directory using `--wd` flag
 5. Specify peptide labeling reagent after `--reporter_ion` flag (values supported by *RawTools* are allowed: `TMT0`, `TMT2`, `TMT6`, `TMT10`, `TMT11`, `iTRAQ4`, `iTRAQ8`), e.g. `--reporter_ion TMT6`
 6. Specify additional arguments (s. below)
@@ -85,7 +85,7 @@ C:/data>Rscript.exe "GlycoBinder.R" --wd "C:/data" --reporter_ion TMT6
 Following parameters modify default *GlycoBinder* behavior if added as command line arguments:
 
 1. `--verbose`  
-Forces *GlycoBinder* to be more chatty.
+Force *GlycoBinder* to be more chatty.
    
 2. `--tol_unit`  
 Specify tolerance unit used for matching ions from corresponding MS2 and MS3 spectra. Supported values are `ppm` and `Th`, e.g. `--tol_unit ppm` (default).
