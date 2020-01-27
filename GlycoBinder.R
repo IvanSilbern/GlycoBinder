@@ -1484,7 +1484,7 @@ local({
   Search_file         <- fread(pglyco_out, header = T, na.strings = "NA", stringsAsFactors = FALSE, key = "Scan")
   
   # format the raw file names
-  Search_file[, RawName := gsub("\\..+$", "", Search_file$RawName)] 
+  Search_file[, RawName := gsub("\\..+$", "", Search_file$GlySpec)] 
   
   # split pglyco output based on the raw file name
   Search_file_spl     <- split(Search_file, Search_file$RawName) 
