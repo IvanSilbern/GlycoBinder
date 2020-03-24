@@ -789,9 +789,8 @@ if(!output_pparse_exists && !output_pparsemod_exists){  # if files pParse_mod.mg
     # for pParse we need to find a path where the pParse is located and then set wd to its location
     # afterwards we can change the wd back to the location of the raw files
     
-    pparse_path <- shell("set path", intern = TRUE)
-    pparse_path <- unlist(strsplit(pparse_path, ";"))
-    pparse_path <- pparse_path[grepl("p[Pp]arse", pparse_path)]
+    pparse_path <- system2("where", args = "pparse", stdout = TRUE)
+    pparse_path <- file.path(gsub("p[Pp]arse\\.exe", "", pparse_path))
     
     if(!dir.exists(pparse_path)) stop("Cannot find location folder of pParse.exe. Please check if the path is set in the environmental variables.")
     
