@@ -84,6 +84,13 @@ args <- (commandArgs(TRUE))
 message("Provided arguments:\n", paste(as.character(args), collapse = "\n"), "\n")
 wd   <- file.path(args[which(args == "--wd") + 1])
 
+if(length(wd) == 0){
+  
+  message("working directory not specified, use default ", getwd())
+  wd <- file.path(getwd())
+  
+}
+
 if(length(wd) == 0 || !dir.exists(wd)) stop("Cannot find working directory. Check the path and agument specifications.")
 
 setwd(wd)
