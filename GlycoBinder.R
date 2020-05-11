@@ -609,7 +609,7 @@ run_pparse    <- function(file_name, out_dir, pparse_path){
   # NULL
   
   ### change working directory to pglyco location
-  if(!dir.exists(pparse_path)) stop("Cannot find folder location of pGlyco")
+  if(!dir.exists(pparse_path)) stop("Cannot find folder location of pparse")
   
   wd <- getwd()
   setwd(pparse_path)
@@ -797,7 +797,7 @@ if(!output_pparse_exists && !output_pparsemod_exists){  # if files pParse_mod.mg
     # afterwards we can change the wd back to the location of the raw files
     
     pparse_path <- system2("where", args = "pparse", stdout = TRUE)
-    pparse_path <- file.path(gsub("p[Pp]arse\\.exe", "", pparse_path))
+    pparse_path <- file.path(gsub("p[Pp]arse\\.exe", "", pparse_path))[[1]]
     
     if(!dir.exists(pparse_path)) stop("Cannot find location folder of pParse.exe. Please check if the path is set in the environmental variables.")
     
@@ -1071,17 +1071,17 @@ if(!output_pglyco1_exists &&                 # output from the first pGlyco sear
     # find location of pglyco executable
     
     pglyco_path <- system2("where", args = "pglyco", stdout = TRUE)
-    pglyco_path <- file.path(gsub("pGlyco\\.exe", "", pglyco_path))
+    pglyco_path <- file.path(gsub("pGlyco\\.exe", "", pglyco_path))[[1]]
     
     if(!dir.exists(pglyco_path)){ # another way to find pGlyco
       
       pglyco_path <- shell("set path", intern = TRUE)
       pglyco_path <- unlist(strsplit(pglyco_path, ";"))
-      pglyco_path <- pglyco_path[grepl("p[Gg]lyco", pglyco_path)]
-      
-      if(!dir.exists(pglyco_path)) stop("Cannot find location folder of pGlyco.exe. Please check if the path is set in the environmental variables.")
+      pglyco_path <- pglyco_path[grepl("p[Gg]lyco", pglyco_path)][[1]]
       
     }
+    
+    if(!dir.exists(pglyco_path)) stop("Cannot find location folder of pGlyco.exe. Please check if the path is set in the environmental variables.")
     
     # check if configuration file already exists. If not, modify the template accordingly
     
@@ -1283,17 +1283,17 @@ message("\n Run second pGlyco search ")
 # find location of pglyco
 
 pglyco_path <- system2("where", args = "pglyco", stdout = TRUE)
-pglyco_path <- file.path(gsub("pGlyco\\.exe", "", pglyco_path))
+pglyco_path <- file.path(gsub("pGlyco\\.exe", "", pglyco_path))[[1]]
 
 if(!dir.exists(pglyco_path)){ # another way to find pGlyco
   
   pglyco_path <- shell("set path", intern = TRUE)
   pglyco_path <- unlist(strsplit(pglyco_path, ";"))
-  pglyco_path <- pglyco_path[grepl("p[Gg]lyco", pglyco_path)]
-  
-  if(!dir.exists(pglyco_path)) stop("Cannot find location folder of pGlyco.exe. Please check if the path is set in the environmental variables.")
+  pglyco_path <- pglyco_path[grepl("p[Gg]lyco", pglyco_path)][[1]]
   
 }
+                      
+if(!dir.exists(pglyco_path)) stop("Cannot find location folder of pGlyco.exe. Please check if the path is set in the environmental variables.")               
 
 # check if configuration file already exists. If not, modify the template accordingly
 
