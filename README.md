@@ -181,6 +181,10 @@ The table is based on pGlyco_modified_peptides.txt table. Each row contains info
 6. `pGlyco_glycans.txt`  
 The table is based on pGlyco_modified_peptides.txt table. Each row contains information about a unique glycan composition identified in the data set. The information about the peptide sequence is not taken into account. The information is combined based on glycan composition only (Glycan(H,N,A,G,F) column). `modpept_id` column refers to `id` column in the `pGlyco_modified_peptides.txt`. Columns `pGlyco_ids`, `Scan`, `Leading_Protein`, `Leading_ProSite` are concatenations of respective columns in `pGlyco_modified_peptides.txt` using ";" as a separator.
 
+### Special case: use of another search engine
+
+Currently, *pGlyco 2.0* is the only search engine supported by the *GlycoBinder* workflow. However, *GlycoBinder* reports merged MS2/MS3 spectra in *mgf* format that are located in `./pparse_output` folder and marked with the `_mod.mgf` suffix. These *mgf* files can be used with any other search engine compatible with the *mgf* format. The search engine output then has to be integrated with the quantitative data from RawTools output (`_Matrix.txt` files in `./rawtools_output` folder). Scan numbers and raw file names can be used to integrate qualitative and quantitative information, respectively.
+
 ### Demonstration data set
 
 As a test data set, we provide an *IgM_TMT0.raw* file. It is a tryptic digest of a purified IgM sample labeled with TMT0 reagent. The file is located in the *demo/* folder together with a *Human_IgM.FASTA* file containing amino acid sequences of the two human proteins, IgM and IgJ, respecitvely. To test the performance of the GlycoBinder, download the contents of the *demo/* folder (e.g. into *C:/data/Glycobinder/demo*), copy the current version of GlycoBinder into it and execute in the command line using following parameters:
