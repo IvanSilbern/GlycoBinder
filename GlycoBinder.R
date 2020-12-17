@@ -136,6 +136,7 @@ if(length(reporter_ions_type) != 1 ||
                               "TMT6",
                               "TMT10",
                               "TMT11",
+                              "TMT16",
                               "iTRAQ4",
                               "iTRAQ8")) stop("Reporter ion type is not provided or is not correct.")
 
