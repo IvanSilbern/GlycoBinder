@@ -190,6 +190,9 @@ Output tables `pGlyco_glycoforms.txt`, `pGlyco_glycosites.txt`, and `pGlyco_glyc
 2. `FucoseStruct`  contains TRUE if the anticipated structure determined by pGlyco contains a fucose (F). FALSE otherwise.  
 3. `CoreFucoseOnly` "Yes" if all corresponding scans are of "11" or "12" CoreFuc type. "No" if all scans are of "0" type. "Ambiguous" in other cases.  
 
+### Parent peak area
+Corresponding parent peak areas are reported as sum (`ParentPeakArea_sum`), median (`ParentPeakArea_median`), and maximum value (`ParentPeakArea_max`).
+
 ### Special case: use of another search engine
 
 Currently, *pGlyco 2.0* is the only search engine supported by the *GlycoBinder* workflow. However, *GlycoBinder* reports merged MS2/MS3 spectra in *mgf* format that are located in `./pparse_output` folder and marked with the `_mod.mgf` suffix. These *mgf* files can be used with any other search engine compatible with the *mgf* format. The search engine output then has to be integrated with the quantitative data from RawTools output (`_Matrix.txt` files in `./rawtools_output` folder). Scan numbers and raw file names can be used to integrate qualitative and quantitative information, respectively.

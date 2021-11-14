@@ -1876,6 +1876,16 @@ rm(list = c("df_glycan_data",
             "df_glycan_data2",
             "df_glycan_int"))
 
+dat <- list(
+  
+  scans   = df_scans,
+  modpept = df_modpept,
+  sites   = df_gsite,
+  gforms  = df_glycof,
+  glycans = df_glycan
+  
+)
+
 ##### check fucosylation #####
 
 # add core fucosylation
@@ -1923,15 +1933,9 @@ check_core_fucose <- function(df){
   
 }
 
-dat <- list(
-  
-  sites   = df_gsite,
-  gforms  = df_glycof,
-  glycans = df_glycan
-  
-)
+use_tables <- c("sites", "gforms", "glycans")
 
-for(i in seq_along(dat)){
+for(i in use_tables){
   
   dat[[i]] <- add_corefuc(dat[[i]])
   dat[[i]] <- check_f_struct(dat[[i]])
@@ -1939,16 +1943,44 @@ for(i in seq_along(dat)){
   
 }
 
+##### Add parent peak area #####
+
+scans <- df_scans[ParentPeakFound == TRUE] 
+
+add_peakArea <- function(df){
+  
+  ids <- lapply(stringr::str_split(df$pGlyco_ids, pattern = "[;/]"), as.integer)
+  area <- rbindlist(lapply(ids, function(x){
+    
+    ppa <- scans[scans$id %in% x, c("RawName", "Peptide", "Glycan(H,N,A,G,F)",
+                                    "ParentIonMass", "PrecursorCharge", "ParentPeakArea")]
+    ppa[, ParentIonMass := signif(ParentIonMass, 5)]
+    ppa <- ppa[order(-ParentPeakArea)]
+    ppa <- ppa[!duplicated(ppa[, -c("ParentPeakArea")])]$ParentPeakArea
+    data.table(ParentPeakArea_sum    = sum(ppa, na.rm = TRUE),
+               ParentPeakArea_median = median(ppa, na.rm = TRUE),
+               ParentPeakArea_max    = max(ppa, na.rm = TRUE))
+    
+  }))
+  df <- cbind(df, area)
+  df
+  
+}
+
+use_tables <- c("modpept", "sites", "gforms", "glycans")
+for(i in seq_along(dat)){
+  
+  dat[[i]] <- add_peakArea(dat[[i]])
+  
+}
+
 # write the tables
 
 if(verbose) message("Write output tables")
-fwrite(df_scans,         "pglyco_output/pGlyco_Scans.txt", sep = "\t")
-fwrite(df_modpept, "pglyco_output/pGlyco_modified_peptides.txt", sep = "\t")
-# fwrite(df_glycof,  "pglyco_output/pGlyco_glycoforms.txt", sep = "\t")
-# fwrite(df_gsite,   "pglyco_output/pGlyco_glycosites.txt", sep = "\t")
-# fwrite(df_glycan,  "pglyco_output/pGlyco_glycans.txt", sep = "\t")
-fwrite(dat[["sites"]], "pglyco_output\\pGlyco_glycosites.txt", sep = "\t")
-fwrite(dat[["gforms"]], "pglyco_output\\pGlyco_glycoforms.txt", sep = "\t")
+fwrite(dat[["scans"]],   "pglyco_output\\pGlyco_Scans.txt", sep = "\t")
+fwrite(dat[["modpept"]], "pglyco_output\\pGlyco_modified_peptides.txt", sep = "\t")
+fwrite(dat[["sites"]],   "pglyco_output\\pGlyco_glycosites.txt", sep = "\t")
+fwrite(dat[["gforms"]],  "pglyco_output\\pGlyco_glycoforms.txt", sep = "\t")
 fwrite(dat[["glycans"]], "pglyco_output\\pGlyco_glycans.txt", sep = "\t")
 
 
