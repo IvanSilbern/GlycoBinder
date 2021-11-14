@@ -1567,26 +1567,26 @@ local({
   
   ptm_transform_out <- proc.time()
 
-df <- fread("pglyco_output/pglyco_quant_results.txt", sep = "\t")
-df <- df[order(Peptide)]
-df <- df[TotalFDR < pglyco_fdr_threshold]
-df[, id := 1:df[, .N]]
-df[, Unique_site := !grepl("/", Proteins)] # site is unique if only one protein id is reported
+df_scans <- fread("pglyco_output/pglyco_quant_results.txt", sep = "\t")
+df_scans <- df_scans[order(Peptide)]
+df_scans <- df_scans[TotalFDR < pglyco_fdr_threshold]
+df_scans[, id := 1:df_scans[, .N]]
+df_scans[, Unique_site := !grepl("/", Proteins)] # site is unique if only one protein id is reported
 
 # intensity names
-int_names <- grep("\\d\\d+[NC]?Intensity$", names(df), value = TRUE)
+int_names <- grep("\\d\\d+[NC]?Intensity$", names(df_scans), value = TRUE)
 
 # combine intensities for modified peptides
 
-modpept_int_sum        <- df[, lapply(.SD, sum), by = .(Peptide, GlySite, `Glycan(H,N,A,G,F)`), .SDcols = int_names]
-modpept_precursor_data <- df[, lapply(.SD, paste, collapse = pglyco_separator), by = .(Peptide, GlySite, `Glycan(H,N,A,G,F)`), .SDcols = c("id", "RawName", "Scan", "PrecursorMZ", "Charge", "Mod", "ParentPeakArea")]
-modpept_glycan_data    <- df[, head(.SD, 1), by = .(Peptide, GlySite, `Glycan(H,N,A,G,F)`), .SDcols = c("GlyID", "PlausibleStruct", "GlyFrag", "GlyMass", "Proteins", "ProSite", "Unique_site")]
+modpept_int_sum        <- df_scans[, lapply(.SD, sum), by = .(Peptide, GlySite, `Glycan(H,N,A,G,F)`), .SDcols = int_names]
+modpept_precursor_data <- df_scans[, lapply(.SD, paste, collapse = pglyco_separator), by = .(Peptide, GlySite, `Glycan(H,N,A,G,F)`), .SDcols = c("id", "RawName", "Scan", "PrecursorMZ", "Charge", "Mod", "ParentPeakArea")]
+modpept_glycan_data    <- df_scans[, head(.SD, 1), by = .(Peptide, GlySite, `Glycan(H,N,A,G,F)`), .SDcols = c("GlyID", "PlausibleStruct", "GlyFrag", "GlyMass", "Proteins", "ProSite", "Unique_site")]
 
 df_modpept <- cbind(modpept_precursor_data,
                     modpept_glycan_data[, -c("Peptide", "GlySite", "Glycan(H,N,A,G,F)")],
                     modpept_int_sum    [, -c("Peptide", "GlySite", "Glycan(H,N,A,G,F)")])
 
-# pGlyco_ids correspond to the row number of df, df_modpept gets its own ids
+# pGlyco_ids correspond to the row number of df_scans, df_modpept gets its own ids
 names(df_modpept)[names(df_modpept) == "id"] <- "pGlyco_ids" 
 df_modpept[, id := 1:df_modpept[, .N]]
 
@@ -1876,14 +1876,81 @@ rm(list = c("df_glycan_data",
             "df_glycan_data2",
             "df_glycan_int"))
 
+##### check fucosylation #####
+
+# add core fucosylation
+add_corefuc <- function(df){
+  
+  ids <- lapply(stringr::str_split(df$pGlyco_ids, pattern = "[;/]"), as.integer)
+  CoreFuc <- unlist(lapply(ids, function(x){
+    
+    paste0(df_scans$CoreFuc[df_scans$id %in% x], collapse = ";")
+    
+  }))
+  df[, CoreFuc := CoreFuc]
+  df
+  
+}
+
+# check if any structure contain fucose
+check_f_struct <- function(df){
+  
+  ids <- lapply(stringr::str_split(df$pGlyco_ids, pattern = "[;/]"), as.integer)
+  f_struct <- unlist(lapply(ids, function(x){
+    
+    any(grepl("F", df_scans$PlausibleStruct[df_scans$id %in% x]))
+    
+  }))
+  
+  df[, FucoseStruct := f_struct]
+  df
+  
+}
+
+check_core_fucose <- function(df){
+  
+  ids <- lapply(stringr::str_split(df$pGlyco_ids, pattern = "[;/]"), as.integer)
+  core_fucose <- unlist(lapply(ids, function(x){
+    
+    if(all(df_scans$CoreFuc[df_scans$id %in% x] %in% c("11", "12"))) return("Yes")
+    else if(all(df_scans$CoreFuc[df_scans$id %in% x] %in% c("0"))) return("No")
+    else return("Ambiguous")
+    
+  }))
+  
+  df[, CoreFucoseOnly := core_fucose]
+  df
+  
+}
+
+dat <- list(
+  
+  sites   = df_gsite,
+  gforms  = df_glycof,
+  glycans = df_glycan
+  
+)
+
+for(i in seq_along(dat)){
+  
+  dat[[i]] <- add_corefuc(dat[[i]])
+  dat[[i]] <- check_f_struct(dat[[i]])
+  dat[[i]] <- check_core_fucose(dat[[i]])
+  
+}
+
 # write the tables
 
 if(verbose) message("Write output tables")
-fwrite(df,         "pglyco_output/pGlyco_Scans.txt", sep = "\t")
+fwrite(df_scans,         "pglyco_output/pGlyco_Scans.txt", sep = "\t")
 fwrite(df_modpept, "pglyco_output/pGlyco_modified_peptides.txt", sep = "\t")
-fwrite(df_glycof,  "pglyco_output/pGlyco_glycoforms.txt", sep = "\t")
-fwrite(df_gsite,   "pglyco_output/pGlyco_glycosites.txt", sep = "\t")
-fwrite(df_glycan,  "pglyco_output/pGlyco_glycans.txt", sep = "\t")
+# fwrite(df_glycof,  "pglyco_output/pGlyco_glycoforms.txt", sep = "\t")
+# fwrite(df_gsite,   "pglyco_output/pGlyco_glycosites.txt", sep = "\t")
+# fwrite(df_glycan,  "pglyco_output/pGlyco_glycans.txt", sep = "\t")
+fwrite(dat[["sites"]], "pglyco_output\\pGlyco_glycosites.txt", sep = "\t")
+fwrite(dat[["gforms"]], "pglyco_output\\pGlyco_glycoforms.txt", sep = "\t")
+fwrite(dat[["glycans"]], "pglyco_output\\pGlyco_glycans.txt", sep = "\t")
+
 
 if(verbose) proc.time() - ptm_transform_out
 

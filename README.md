@@ -183,6 +183,13 @@ The table is based on pGlyco_modified_peptides.txt table. Each row contains info
 6. `pGlyco_glycans.txt`  
 The table is based on pGlyco_modified_peptides.txt table. Each row contains information about a unique glycan composition identified in the data set. The information about the peptide sequence is not taken into account. The information is combined based on glycan composition only (Glycan(H,N,A,G,F) column). `modpept_id` column refers to `id` column in the `pGlyco_modified_peptides.txt`. Columns `pGlyco_ids`, `Scan`, `Leading_Protein`, `Leading_ProSite` are concatenations of respective columns in `pGlyco_modified_peptides.txt` using ";" as a separator.
 
+### Determining core fucosylation
+
+Output tables `pGlyco_glycoforms.txt`, `pGlyco_glycosites.txt`, and `pGlyco_glycans.txt` contain following columns that help to assess whether the glycan is of a core fucose composition:  
+1. `CoreFuc` corresponds to CoreFuc output of pGlyco. Values (0, 10, 11, 12) for each scan are separated by ";". Refer to a pGlyco manual for a detailed description of values.  
+2. `FucoseStruct`  contains TRUE if the anticipated structure determined by pGlyco contains a fucose (F). FALSE otherwise.  
+3. `CoreFucoseOnly` "Yes" if all corresponding scans are of "11" or "12" CoreFuc type. "No" if all scans are of "0" type. "Ambiguous" in other cases.  
+
 ### Special case: use of another search engine
 
 Currently, *pGlyco 2.0* is the only search engine supported by the *GlycoBinder* workflow. However, *GlycoBinder* reports merged MS2/MS3 spectra in *mgf* format that are located in `./pparse_output` folder and marked with the `_mod.mgf` suffix. These *mgf* files can be used with any other search engine compatible with the *mgf* format. The search engine output then has to be integrated with the quantitative data from RawTools output (`_Matrix.txt` files in `./rawtools_output` folder). Scan numbers and raw file names can be used to integrate qualitative and quantitative information, respectively.
