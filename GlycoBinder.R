@@ -29,7 +29,7 @@ message("\n***** GlycoBinder version ", version, " *****\n")
 raw_file_extension <- "raw"
 
 # parallelizing strategy for the "future" package
-plan_strategy       <- "multiprocess"
+plan_strategy <- "multisession"
 
 # pglyco
 reversed_regexpr <- "^REV_"   # decoy sequences 
@@ -68,14 +68,37 @@ pglyco_config_default <- c("[version]",
                            "spec_file_type=mgf",
                            "spectrum_total=")
 
+marker_ions <- c("Mass;Marker;Formula
+                  109.028;Hex_fragm;C6H4O2
+                  115.039;Hex_fragm;C5H6O3
+                  126.055;HexNAc_fragm;C6H7O2N1
+                  127.039;Hex_2xH2O;C6H6O3
+                  138.055;HexNAc_fragm;C7H7O2N1
+                  144.066;HexNAc_fragm;C6H9O3N1
+                  163.060;Hex;C6H10O5
+                  168.066;HexNAc_2xH2O;C8H9O3N1
+                  186.076;HexNAc_2xH2O;C8H11O4N1
+                  204.087;HexNAc;C8H13O5N1
+                  274.092;NeuAc_H2O;C11H15O7N1
+                  290.087;NeuGc_H2O;C11H15O8N1
+                  292.103;NeuAc;C11H17O8N1
+                  308.098;NeuGc;C11H17O9N1
+                  366.140;Hex_HexNAc;C14H23O10N1
+                  657.140;Hex_HexNAc_NeuAc;C25H40O18N2
+                  673.230;Hex_HexNAc_NeuGc;C25H40O19N2")
+
+#if(!file.exists("marker_ions.txt")) fwrite(marker_ions, "marker_ions.txt", sep = "\t")
+
 # variables that will be set through arguments
-verbose             <- TRUE   # verbosity
-nr_threads          <- 2      # number of threads to use 
-ion_match_tolerance <- 1      # width of the tolerance window for ion matching
-tolerance_unit      <- "ppm"  # unit for the tolerance window
-reporter_ions_type  <- "TMT6" # type of reporter ions
-seq_wind_size    <- 7         # number of aa from each side of the modified residue
-pglyco_fdr_threshold <- 0.02  # total FDR cutoff
+verbose                   <- TRUE   # verbosity
+nr_threads                <- 2      # number of threads to use 
+ion_match_tolerance       <- 1      # width of the tolerance window for ion matching
+tolerance_unit            <- "ppm"  # unit for the tolerance window
+reporter_ions_type        <- "TMT6" # type of reporter ions
+seq_wind_size             <- 7      # number of aa from each side of the modified residue
+pglyco_fdr_threshold      <- 0.02  # total FDR cutoff
+report_intermediate_files <- FALSE
+skip_marker_ions          <- FALSE
 
 ##### collect arguments and set working directory #####
 args <- (commandArgs(TRUE))
@@ -86,7 +109,7 @@ wd   <- file.path(args[which(args == "--wd") + 1])
 
 if(length(wd) == 0){
   
-  message("working directory not specified, use default ", getwd())
+  if(verbose) message("working directory not specified, use default ", getwd())
   wd <- file.path(getwd())
   
 }
@@ -98,12 +121,12 @@ message("Set working directory to ", getwd())
 
 ##### find raw files in the working directory #####
 
-raw_file_names <- grep(paste0("\\.", raw_file_extension, "$"), list.files(), value = TRUE)
+raw_file_names <- list.files(pattern = paste0("\\.", raw_file_extension, "$"))
 
 if(length(raw_file_names) == 0) stop(paste0("Cannot find .", raw_file_extension, " files in the specified directory"))
 message(paste0("Found raw files:\n", paste(raw_file_names, collapse = "\n")))
 
-if(any(grepl("\\.", gsub("\\.raw", "", raw_file_names)))) stop("Dots . are not allowed in raw file names (except .raw file extension)")
+if(any(grepl("\\.", gsub(paste0(".", raw_file_extension), "", raw_file_names)))) stop("Dots . are not allowed in raw file names (except .raw file extension)")
 
 
 ##### collect other arguments #####
@@ -163,9 +186,11 @@ if(length(seq_wind_size) != 1 || is.na(seq_wind_size) || seq_wind_size <= 1 || p
    
 }
 
-
 #report intermediate results
-if(any(grepl("--report_intermediate_results", args))) report_intermediate_results <- TRUE else report_intermediate_results <- FALSE
+if(any(grepl("--report_intermediate_files", args))) report_intermediate_files <- TRUE else report_intermediate_files <- FALSE
+
+# perform second pglyco search on the reduced fasta file
+if(any(grepl("--skip_marker_ions", args))) skip_marker_ions <- TRUE
 
 # number of available threads
 nr_threads   <- args[which(grepl("--nr_threads", args)) + 1]
@@ -186,7 +211,7 @@ if(nr_threads > length(raw_file_names)) nr_threads <- length(raw_file_names)
 
 ##### Load required packages #####
 
-# function for checking / installing the packages
+# function for checking / installing packages
 install_packages <- function(packages, install = TRUE, verbose = verbose){
   # function checks if the required packages are installed and
   # tries to install missing packages if install = TRUE
@@ -257,8 +282,10 @@ readMgf_msconv    <- function(path){
     
   }
   
+  # determine ion positions
   ions.positions <- unlist(Map(ionsBegin, start = start.positions, end = end.positions, MoreArgs = list(mgf = mgf[[1]])))
   
+  # remove empty scans
   if(any(is.na(ions.positions))){
     
     start.positions <- start.positions[!is.na(ions.positions)]
@@ -276,7 +303,7 @@ readMgf_msconv    <- function(path){
     return(temp)
     
     
-  } , start = ions.positions,  end = (end.positions - 1), MoreArgs = list(mgf = mgf[[1]]))
+  }, start = ions.positions,  end = (end.positions - 1), MoreArgs = list(mgf = mgf[[1]]))
   
   data.table(scan_start  = start.positions,
              scan_end    = end.positions,
@@ -350,7 +377,7 @@ merge_ms2_ms3 <- function(matrix_data, mgf_tab,
       if(length(not_matching) < length(ms3_ions[, 1])){
         
         probable_match <- setdiff(seq_along(ms3_ions[, 1]), not_matching) # indices of ms3 ions that might have a match to ms2 ions
-        test_ions      <- ms3_ions[probable_match, 1]                   # mz values of ms3 ions that might have a match to ms2 ions
+        test_ions      <- ms3_ions[probable_match, 1]                     # mz values of ms3 ions that might have a match to ms2 ions
         differences    <- abs(outer(test_ions, ms2_ions[, 1], FUN = "-")) # mz differences between ms3 and ms2 ions
         
         # provide tolerance level for each ms3 ion
@@ -436,6 +463,50 @@ merge_ms2_ms3 <- function(matrix_data, mgf_tab,
       
     })
   )
+  
+}
+
+ion_match <- function(marker_ions,
+                      mgf,
+                      ion_match_tolerance,
+                      tolerance_unit){
+  
+  dt <- data.table()
+  for(i in 1:mgf[, .N]){
+    
+    ions      <- mgf$ions[[i]][, 1]
+    intensity <- mgf$ions[[i]][, 2]
+    delta_m <- abs(outer(ions, marker_ions$Mass, FUN = "-"))
+    
+    # provide tolerance level for each ms3 ion
+    if(tolerance_unit == "ppm"){
+      
+      tolerances <- ion_match_tolerance*ions/10^6
+      
+    } else if(tolerance_unit == "Th"){
+      
+      tolerances <- rep(ion_match_tolerance, rep = length(ions))
+      
+    } else {
+      
+      message("ion matching tolerance is 1 ppm")
+      tolerances <- ion_match_tolerance*ions/10^6
+      
+    }
+    
+    # which ions passed the tolerance cutoff
+    passed_tolerance_cutoff <- which(delta_m < tolerances | dplyr::near(delta_m, tolerances), arr.ind = TRUE)
+    passed_tolerance_cutoff <- delta_m < tolerances | dplyr::near(delta_m, tolerances)
+    
+    temp   <- data.table()
+    temp   <- temp[, lapply(data.frame(passed_tolerance_cutoff), function(x) sum(intensity[x]))]
+    dt <- rbind(dt, temp)
+    
+  }
+  
+  names(dt) <- paste0(marker_ions$Marker, "_", trunc(marker_ions$Mass))
+  dt[, Scan := mgf$scan_number]
+  return(dt)
   
 }
 
@@ -714,11 +785,7 @@ if(any(contain_ms3) && # there are files with ms3 spectra
   
 local({
   
-  suppressWarnings(
-    
-    dir.create("msconvert_output\\")
-    
-  )
+  if(!dir.exists("msconvert_output"))  dir.create("msconvert_output")
   
   message("Run msconvert\n")
   
@@ -778,19 +845,16 @@ local({
 
 ##### run pParse #####
 
-if(!output_pparse_exists && !output_pparsemod_exists){  # if files pParse_mod.mgf already exist, there is no need to run pParse
+if(!output_pparse_exists && !output_pparsemod_exists){  
   
+  # if files pParse_mod.mgf already exist, there is no need to run pParse
   # pParse processing will be initiated only if neither of pParse files exist
   # output_pparse_exists == FALSE &
   # output_pparsemod_exists == FALSE
   
   local({
     
-    suppressWarnings(
-      
-      dir.create("pparse_output\\")
-      
-    )
+    if(!dir.exists("pparse_output"))  dir.create("pparse_output")
     
     message("\nrun pParse")
     
@@ -844,12 +908,18 @@ if(!output_pparse_exists && !output_pparsemod_exists){  # if files pParse_mod.mg
       
     }
     
-    # remove created folders
-      list_dirs <- list.dirs("pparse_output", recursive = FALSE)
-      to_delete <- list_dirs[grepl("pparse_process[0-9]+", list_dirs)]
-      unlink(to_delete, recursive = TRUE)
-    
   })
+  
+  if(!report_intermediate_files){
+    
+    # remove created folders
+    list_dirs <- list.dirs("pparse_output", recursive = FALSE)
+    to_delete <- list_dirs[grepl("pparse_process[0-9]+", list_dirs)]
+    unlink(to_delete, recursive = TRUE)
+    
+  }
+  
+  if(!report_intermediate_files){
   
   suppressWarnings(
     
@@ -865,6 +935,7 @@ if(!output_pparse_exists && !output_pparsemod_exists){  # if files pParse_mod.mg
     )
   )
   
+  }
   
 } else {
   
@@ -1049,6 +1120,70 @@ if(any(contain_ms3) && !all(file.exists(paste0("pparse_output/", gsub("\\.raw$",
 
 cat("\n")
 
+##### identify oxonium ions #####
+if(!skip_marker_ions){
+
+local({
+  
+  message("\nidentify marker ions")
+  
+  if(!dir.exists("pglyco_output")) dir.create("pglyco_output")
+  
+  if(!file.exists("marker_ions.txt")) {
+    
+    marker_ions <- fread(marker_ions, sep = ";")
+    fwrite(marker_ions, "marker_ions.txt", sep = "\t")
+    
+  } else {
+    
+    marker_ions_temp <- fread("marker_ions.txt")
+    
+    marker_ions_temp[, Mass := as.numeric(Mass)]
+    marker_ions_temp <- marker_ions_temp[!is.na(Mass)]
+    marker_ions_temp <- marker_ions_temp[!duplicated(Mass)]
+    
+    
+    if(nrow(marker_ions_temp) == 0){
+      
+      message("A problem has occured with supplied oxonium ion table. Use default oxonium ions")
+      marker_ions <- fread(marker_ions, sep = ";")
+      
+    } else {
+      
+      marker_ions <- marker_ions_temp
+      
+    }
+    
+  }
+  
+  plan(strategy = "multisession")
+  
+  # use future_lapply function for parallelization
+  list_dt <- future_lapply(raw_file_names, FUN = function(file_name){
+    
+    # read mgf file (msconvert output)
+    mgf <- readMgf_msconv(paste0("pparse_output/", gsub(".raw", "_pParse_mod.mgf", file_name)))
+    
+    # remove duplicated scan numbers (pParse assigns multiple precursor masses per scan)
+    mgf <- mgf[!duplicated(mgf$scan_number)] 
+    #mgf <- mgf[scan_number %in% unique(res[RawName == raw_file_names[i]]$Scan)]
+    
+    ion_match(marker_ions, mgf, 2, "ppm")
+    
+  })
+  
+  list_dt <- Map(function(dt, RawName) return(dt[, RawName := RawName]),
+                 dt = list_dt, RawName = gsub(".raw", "", raw_file_names))
+  marker_dt <- rbindlist(list_dt)
+  marker_dt <- marker_dt[!duplicated(marker_dt[, c("Scan", "RawName")])]
+  
+  fwrite(marker_dt, "pglyco_output\\marker_ions_identified.txt", sep = "\t")
+  
+  plan(strategy = "sequential")
+
+})
+
+}
 ##### run pGlyco #####
 
 if(!output_pglyco1_exists &&                 # output from the first pGlyco search does not exist
@@ -1222,7 +1357,7 @@ if(!output_pglyco1_exists &&                 # output from the first pGlyco sear
     
     fwrite(df_pglyco, "pglyco_output/pGlycoDB-GP-FDR-Pro.txt", sep = "\t", quote = FALSE, row.names = FALSE)
     
-    if(!report_intermediate_results && file.exists("pGlycoDB-GP-FDR-Pro.txt")){
+    if(!report_intermediate_files && file.exists("pGlycoDB-GP-FDR-Pro.txt")){
       
       list_dirs <- list.dirs(path = "pglyco_output/", recursive = FALSE)
       to_delete <- list_dirs[grepl("pglyco_process[0-9]+", list_dirs)]
@@ -1435,7 +1570,7 @@ if(nrow(df_pglyco) == 0) stop("No pGlyco results")
 # write combined pGlyco results
 fwrite(df_pglyco, "pglyco_output/pGlycoDB-GP-FDR-Pro2.txt", sep = "\t", quote = FALSE, row.names = FALSE)
 
-if(!report_intermediate_results && file.exists("pglyco_output/pGlycoDB-GP-FDR-Pro2.txt")){
+if(!report_intermediate_files && file.exists("pglyco_output/pGlycoDB-GP-FDR-Pro2.txt")){
   
   list_dirs <- list.dirs("pglyco_output", recursive = FALSE)
   to_delete <- list_dirs[grepl("pglyco_process[0-9]+", list_dirs)]
@@ -1458,6 +1593,7 @@ if(verbose) proc.time() - ptm_pglyco
 }  
   
 }  
+
 ##### combine pglyco output and RawTools output #####
 
 # find pGlyco output file
@@ -1485,82 +1621,46 @@ local({
   
   if(verbose) message("Combining pglyco and RawTools output")
   
-  ptm_comb_pglyco_rawtools <- proc.time() 
-  
   # read the pglyco output file
-  Search_file         <- fread(pglyco_out, header = T, na.strings = "NA", stringsAsFactors = FALSE, key = "Scan")
-  
+  Search_file <- fread(pglyco_out, header = T, na.strings = "NA",
+                       stringsAsFactors = FALSE, key = "Scan")
+
   # format the raw file names
   Search_file[, RawName := gsub("\\..+$", "", Search_file$GlySpec)] 
   
-  # split pglyco output based on the raw file name
-  Search_file_spl     <- split(Search_file, Search_file$RawName) 
+  # read marker ion intensities
+  marker_dt <- fread("pglyco_output/marker_ions_identified.txt")
   
-  # combine pGlyco and _Matrix files
-  for (i in 1:length(Search_file_spl)){
+  #combine matrix files into a single file
+  matrix_name <- stringr::str_split(matrix_files, "\\.", simplify = TRUE)[, 1]
+  Matrix_file <- data.table()
+  for(i in seq_along(matrix_name)){
     
-    Search_sub  <- Search_file_spl[[i]]
-    S_name      <- Search_sub$RawName[1]
+    mat_data <- fread(paste0("rawtools_output/", matrix_files[i]),
+                      stringsAsFactors = FALSE, header = TRUE, key = "MS2ScanNumber")
+    #remove an empty column if it is appended
+    if(sum(is.na(mat_data[, c(ncol(..mat_data))])) == nrow(mat_data)) mat_data <- mat_data[, -ncol(mat_data), with = FALSE]
+    mat_data[, RawName := matrix_name[i]]
+    Matrix_file <- rbind(Matrix_file, mat_data)
     
-    f_name      <- stringr::str_split(matrix_files, "\\.", simplify = TRUE)[, 1]
-    f_index     <- 1:length(f_name)
-    
-    # match raw file name in pglyco to matrix file
-    f_mat       <- f_name [which(f_name == S_name)]
-    f_mat_index <- f_index[which(f_name == S_name)]
-    
-    nf <- length(f_mat) 
-    if (nf > 0){
-      
-      for (j in 1:nf){
-        
-        mat_data          <- fread(paste0("rawtools_output/", matrix_files[f_mat_index[j]]), stringsAsFactors = FALSE, header = TRUE, key = "MS2ScanNumber")
-        
-        #remove an empty column if it is appended
-        if(sum(is.na(mat_data[, c(ncol(..mat_data))])) == nrow(mat_data)) mat_data <- mat_data[, -ncol(mat_data), with = FALSE]
-        
-        mat_data[, FileName := f_mat[j]]
-        Search_match      <- merge(Search_sub, mat_data, by.x = "Scan", by.y = "MS2ScanNumber")
-        
-        if (j == 1){
-          
-          Search_matrix_all <- Search_match
-          
-        } else {
-          
-          Search_matrix_all <- rbind(Search_matrix_all, Search_match)
-          
-        }
-      }
-      
-    }
-    
-    if (i == 1){
-      
-      Search_match_all <- Search_matrix_all
-      
-    } else {
-      
-      Search_match_all <- rbind(Search_match_all, Search_matrix_all)
-      
-    }
   }
+  Search_match_all <- merge(Search_file, Matrix_file,
+                            by.x = c("RawName", "Scan"), by.y = c("RawName", "MS2ScanNumber"))
+  Search_match_all <- merge(Search_match_all, marker_dt, by = c("Scan", "RawName"), all.x = TRUE)
   
   # write combined data
-  F.path <- file.path(paste0("pglyco_output/pglyco_quant_results", ".txt"))
-  if(verbose) message("Write combined data table ", F.path)
-  fwrite(Search_match_all, F.path , na = "NA", row.names = FALSE, quote = FALSE, sep = "\t")
-  
-  if(verbose) proc.time() - ptm_comb_pglyco_rawtools
+  fwrite(Search_match_all, "pglyco_output/pglyco_quant_results.txt",
+         na = "NA", row.names = FALSE, quote = FALSE, sep = "\t")
   
 })
+
+
 
 ##### Combine reporter ion intensities of each Glycoform on a particular site #####
 
 # Combine reporter ion intensities based on Peptide + GlyID
 
 if(!file.exists("pglyco_output/pglyco_quant_results.txt")) stop("Cannot find combined result file from pGlyco and RawTools output")
-
 if(verbose) message("Transforming output tables")
 
 local({
@@ -1576,9 +1676,19 @@ df_scans[, Unique_site := !grepl("/", Proteins)] # site is unique if only one pr
 # intensity names
 int_names <- grep("\\d\\d+[NC]?Intensity$", names(df_scans), value = TRUE)
 
-# combine intensities for modified peptides
+# marker ion names
+if(!skip_marker_ions){
+  
+  mion_names <- unlist(fread("pglyco_output/marker_ions_identified.txt", nrow = 1, header = FALSE))
+  mion_names <- mion_names[!mion_names %in% c("Scan", "RawName")]
 
-modpept_int_sum        <- df_scans[, lapply(.SD, sum), by = .(Peptide, GlySite, `Glycan(H,N,A,G,F)`), .SDcols = int_names]
+} else {
+  
+  mion_names <- character()
+  
+  }
+# combine intensities for modified peptides
+modpept_int_sum        <- df_scans[, lapply(.SD, sum), by = .(Peptide, GlySite, `Glycan(H,N,A,G,F)`), .SDcols = c(int_names, mion_names)]
 modpept_precursor_data <- df_scans[, lapply(.SD, paste, collapse = pglyco_separator), by = .(Peptide, GlySite, `Glycan(H,N,A,G,F)`), .SDcols = c("id", "RawName", "Scan", "PrecursorMZ", "Charge", "Mod", "ParentPeakArea")]
 modpept_glycan_data    <- df_scans[, head(.SD, 1), by = .(Peptide, GlySite, `Glycan(H,N,A,G,F)`), .SDcols = c("GlyID", "PlausibleStruct", "GlyFrag", "GlyMass", "Proteins", "ProSite", "Unique_site")]
 
@@ -1792,7 +1902,6 @@ temp <- lapply(seq_along(df_sw$seq_wind), function(i){
 
 df_sw <- rbindlist(temp)
 
-
 # add sequence window information and re-ordered proteins to df_modpept
 df_modpept2 <- df_sw[, list(modpept_id = unlist(strsplit(modpept_ids, split = ";"))), by = seq_wind]
 df_modpept2 <- merge(df_modpept2, df_sw, by = "seq_wind") 
@@ -1807,7 +1916,7 @@ df_modpept  <- merge(df_modpept[, -c("Proteins", "ProSite")], df_modpept2[, -c("
 
 df_glycof_data  <- df_modpept[, lapply(.SD, paste, collapse = ";"), by = .(seq_wind, `Glycan(H,N,A,G,F)`), .SDcols = c("id", "Scan", "pGlyco_ids", "Peptide", "GlySite", "GlyID")]
 df_glycof_data2 <- df_modpept[, head(.SD, 1),                       by = .(seq_wind, `Glycan(H,N,A,G,F)`), .SDcols = c("GlyMass", "Proteins", "ProSites", "Leading_Protein", "Leading_ProSite")]
-df_glycof_int   <- df_modpept[, lapply(.SD, sum, na.rm = TRUE),     by = .(seq_wind, `Glycan(H,N,A,G,F)`), .SDcols = int_names]
+df_glycof_int   <- df_modpept[, lapply(.SD, sum, na.rm = TRUE),     by = .(seq_wind, `Glycan(H,N,A,G,F)`), .SDcols = c(int_names, mion_names)]
 
 df_glycof <- cbind(df_glycof_data,
                    df_glycof_data2[, -c("seq_wind", "Glycan(H,N,A,G,F)")],
@@ -1820,10 +1929,9 @@ rm(list = c("df_glycof_data",
             "df_glycof_int"))
 
 # combine intensities for glycosites
-
 df_gsite_data  <- df_modpept[, lapply(.SD, paste, collapse = ";"), by = .(seq_wind), .SDcols = c("id", "Scan", "pGlyco_ids", "Peptide", "GlySite", "GlyID", "Glycan(H,N,A,G,F)", "GlyMass")]
 df_gsite_data2 <- df_modpept[, head(.SD, 1),                       by = .(seq_wind), .SDcols = c("Proteins", "ProSites", "Leading_Protein", "Leading_ProSite")]
-df_gsite_int   <- df_modpept[, lapply(.SD, sum, na.rm = TRUE),     by = .(seq_wind), .SDcols = int_names]
+df_gsite_int   <- df_modpept[, lapply(.SD, sum, na.rm = TRUE),     by = .(seq_wind), .SDcols = c(int_names, mion_names)]
 
 df_gsite <- cbind(df_gsite_data,
                   df_gsite_data2[, -c("seq_wind")],
@@ -1865,7 +1973,7 @@ df_glycan_data2 <- df_modpept[, head(.SD, 1),
 
 df_glycan_int   <- df_modpept[, lapply(.SD, sum, na.rm = TRUE),
                               by = .(`Glycan(H,N,A,G,F)`),
-                              .SDcols = int_names]
+                              .SDcols = c(int_names, mion_names)]
 df_glycan <- cbind(df_glycan_data,
                    df_glycan_data2[, -c("Glycan(H,N,A,G,F)")],
                    df_glycan_int  [, -c("Glycan(H,N,A,G,F)")])
