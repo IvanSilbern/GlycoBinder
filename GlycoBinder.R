@@ -68,6 +68,48 @@ pglyco_config_default <- c("[version]",
                            "spec_file_type=mgf",
                            "spectrum_total=")
 
+pglyco3_config_default <- c("[version]",
+                            "pGlyco_version=pGlyco3.0.rc2",
+                            "pGlyco_type=pGlycoDB",
+                            "[ini]",
+                            "glycoini=glyco.ini",
+                            "modini=modification.ini",
+                            "[glycan]",
+                            "glycan_type=N-Glycan",
+                            "glycan_db=pGlyco-N-Human.gdb",
+                            "glycan_fix_mod=",
+                            "glycan_var_mod=",
+                            "max_var_mod_on_glycan=1",
+                            "max_glycan_db_size=100000",
+                            "[protein]",
+                            "fasta=", 
+                            "enzyme=Trypsin KR _ C",
+                            "digestion=specific",
+                            "max_miss_cleave=2",
+                            "min_peptide_len=6",
+                            "max_peptide_len=40",
+                            "min_peptide_weight=600",
+                            "max_peptide_weight=4000",
+                            "protein_fix_mod=Carbamidomethyl[C]",
+                            "protein_var_mod=Oxidation[M],Acetyl[ProteinN-term]",
+                            "max_var_mod_on_peptide=2",
+                            "[search]",
+                            "precursor_tolerance=10",
+                            "precursor_tolerance_type=ppm",
+                            "fragment_tolerance=20",
+                            "fragment_tolerance_type=ppm",
+                            "fragmentation_type=HCD",
+                            "spec_file_type=raw",
+                            "spectrum_total=1",
+                            "file1=",
+                            "top_n_peaks=300",
+                            "output_top_n=5",
+                            "percolator=0",
+                            "FDR=0.01",
+                            "FMM_for_peptide_FDR=0",
+                            "pGlycoSite_check_db=1",
+                            "output_dir=")
+
 marker_ions <- c("Mass;Marker;Formula
                   109.028;Hex_fragm;C6H4O2
                   115.039;Hex_fragm;C5H6O3
@@ -99,12 +141,14 @@ seq_wind_size             <- 7      # number of aa from each side of the modifie
 pglyco_fdr_threshold      <- 0.02  # total FDR cutoff
 report_intermediate_files <- FALSE
 skip_marker_ions          <- FALSE
+parent_area_fun           <- "sum"
 
 ##### collect arguments and set working directory #####
 args <- (commandArgs(TRUE))
 
 # working directory
 message("Provided arguments:\n", paste(as.character(args), collapse = "\n"), "\n")
+
 wd   <- file.path(args[which(args == "--wd") + 1])
 
 if(length(wd) == 0){
@@ -189,8 +233,17 @@ if(length(seq_wind_size) != 1 || is.na(seq_wind_size) || seq_wind_size <= 1 || p
 #report intermediate results
 if(any(grepl("--report_intermediate_files", args))) report_intermediate_files <- TRUE else report_intermediate_files <- FALSE
 
-# perform second pglyco search on the reduced fasta file
+# skip search for marer ions
 if(any(grepl("--skip_marker_ions", args))) skip_marker_ions <- TRUE
+
+# perform second pglyco search on the reduced fasta file
+if(any(grepl("--parent_area_fun", args))) parent_area_fun <- as.character(args[which(args == "--parent_area_fun") + 1])
+if(!parent_area_fun %in% c("sum", "median", "mean", "max", "min")){
+  
+  message("\nIncorrect function provided for --parent_area_fun argument. Use sum as default function")
+  parent_area_fun <- "sum"
+  
+  } 
 
 # number of available threads
 nr_threads   <- args[which(grepl("--nr_threads", args)) + 1]
@@ -2055,31 +2108,49 @@ for(i in use_tables){
 
 scans <- df_scans[ParentPeakFound == TRUE] 
 
-add_peakArea <- function(df){
+add_peakArea <- function(df, scans, FUN = "sum"){
   
   ids <- lapply(stringr::str_split(df$pGlyco_ids, pattern = "[;/]"), as.integer)
-  area <- rbindlist(lapply(ids, function(x){
+  area <- unlist(lapply(ids, function(x){
     
     ppa <- scans[scans$id %in% x, c("RawName", "Peptide", "Glycan(H,N,A,G,F)",
                                     "ParentIonMass", "PrecursorCharge", "ParentPeakArea")]
     ppa[, ParentIonMass := signif(ParentIonMass, 5)]
     ppa <- ppa[order(-ParentPeakArea)]
     ppa <- ppa[!duplicated(ppa[, -c("ParentPeakArea")])]$ParentPeakArea
-    data.table(ParentPeakArea_sum    = sum(ppa, na.rm = TRUE),
-               ParentPeakArea_median = median(ppa, na.rm = TRUE),
-               ParentPeakArea_max    = max(ppa, na.rm = TRUE))
+    ParentPeakArea  <- eval(call(get("FUN"), ppa, na.rm = TRUE))
+    return(ParentPeakArea)
     
   }))
-  df <- cbind(df, area)
-  df
+  
+  df[, ParentPeakArea := area]
+  return(df)
   
 }
 
 use_tables <- c("modpept", "sites", "gforms", "glycans")
-for(i in seq_along(dat)){
+for(i in use_tables){
   
-  dat[[i]] <- add_peakArea(dat[[i]])
+  dat[[i]] <- add_peakArea(df = dat[[i]], scans = scans, FUN = parent_area_fun)
   
+}
+
+# convert reporter ion intensities into %
+percentIntensity <- function(df, int_names){
+
+  df[, TotalRepIonIntensity := sum(unlist(.SD), na.rm = TRUE),   .SD = int_names, by = "id"]
+  df[, paste0(int_names, "Percent") := .SD/TotalRepIonIntensity, .SD = int_names, by = "id"]
+  df[, paste0(int_names, "Percent") := 100*.SD/TotalRepIonIntensity, .SD = int_names, by = "id"]
+  df[, paste0(int_names, "_ParentPeakArea") := .SD*ParentPeakArea*0.01, .SD = paste0(int_names, "Percent"), by = "id"]
+  return(df)
+
+  }
+
+use_tables <- c("scans", "modpept", "sites", "gforms", "glycans")
+for(i in use_tables){
+
+  dat[[i]] <- percentIntensity(dat[[i]], int_names = int_names)
+
 }
 
 # write the tables

@@ -111,7 +111,10 @@ Specify number of available processors for *GlycoBinder* processing. It can take
 The parameter specifies the number of amino acids around the modification site. It is applied to extract sequence window around modification site from protein sequences. Sequence windows are needed to combine quantitative information on glycoform level. Default paramter is 7, e.g. `--seq_wind_size 7`. Seven amino acid  before the modified site and seven amino acids after the modified site will be extracted, resulting in the 15 amino acids long sequence window.  
 
 10. `--skip_marker_ions`  
-*GlycoBinder* will not look for oxonium/marker ions in the scans.
+*GlycoBinder* will not look for oxonium/marker ions in the scans.  
+
+11. `--parent_area_fun`  
+Function which will be used to combine parent peak areas. Available options: `sum`, `mean`, `median`, `max`, and `min`. `sum` is used per default.
 
 ### Default parameters for external tools
 
@@ -165,6 +168,7 @@ After processing with *RawTools*, files that were identified as not containing M
 *GlycoBinder* combines MS2 and MS3 spectra based on MS2 and MS3 spectra scan number pairs in the *RawTools* output files (*MS2ScanNumber* and *MS3ScanNumber* columns within *\_Matrix.txt* file). First, ions from MS2/MS3 scan pairs are roughly matched using 1 Th tolerance window. Initially matching ions are then tested to satisfy the specified tolerance window (1 ppm per default, it can be changed by specifying `--tol_unit` and `--match_tol` arguments). If several ions matches the same ion, the ions with the minimal absolute mass difference are considered as the matching ion pair. Intensities of matched ions are summed. Remaining MS3 ions that do not have matching MS2 ions are simply added to the MS2 spectra. *pParse* *.mgf* file will then output merged MS2/MS3 spectra. *GlycoBinder* matches spectra in the *pParse* output file to the merged MS2/MS3 spectra based on the scan number. While scan number is unique for merged MS2/MS3 spectra, several spectra in the *pParse* output can refer to the same scan number. For all of them, the spectrum will be substituted by the respective merged MS2/MS3 spectrum. Spectra that do no share scan number with merged MS2/MS3 spectra will be kept unchanged.
 
 ### Identifyig oxonium/marker ions
+
 Per deafault (unless `--skip_marker_ions` was specified), *GlycoBinder* will look for presence of pre-defined marker ions in the MS2 spectra. The intensities of the identified marker ions is reported as a sum of corresponding marker ion intensities.  
 Marker ions that should be looked for can be specified specified in a "marker_ions.txt" file and placed in the root folder. If no such file exists, *GlycoBinder* will generate a default one, which can be used as a template later. 
 
@@ -201,7 +205,14 @@ Output tables `pGlyco_glycoforms.txt`, `pGlyco_glycosites.txt`, and `pGlyco_glyc
 3. `CoreFucoseOnly` "Yes" if all corresponding scans are of "11" or "12" CoreFuc type. "No" if all scans are of "0" type. "Ambiguous" in other cases.  
 
 ### Parent peak area
-Corresponding parent peak areas are reported as sum (`ParentPeakArea_sum`), median (`ParentPeakArea_median`), and maximum value (`ParentPeakArea_max`).
+
+Corresponding parent peak areas are reported as `ParentPeakArea` column in the output tables.  
+Function that is used for the parent peak area aggregation can be specified via `--parent_area_fun` parameter.  
+Per default, ParentPeakArea is the sum of the corresponding parent peak areas.
+Relative parent peak area is reported based on the relative intensities of the reporter ions.  
+The total reporter ion intensity is reported in the `TotalRepIonIntensity` column.  
+Relative reporter ion intensities are reported as percentages in `{ReporterIon}IntensityPercent` columns, e.g., `126IntensityPercent` for a TMT-126 reporter ion.
+Relative parent peak area is then calculated as 0.01*`{ReporterIon}IntensityPercent`*ParentPeakArea and reported as `{ReporterIon}IntensityPercent_ParentPeakArea`.
 
 ### Special case: use of another search engine
 
