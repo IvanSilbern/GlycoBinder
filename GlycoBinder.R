@@ -21,246 +21,8 @@
 
 ptm <- proc.time()
 
-##### define some variables #####
-
 version <- "1.0.0"
 message("\n***** GlycoBinder version ", version, " *****\n")
-
-raw_file_extension <- "raw"
-
-# parallelizing strategy for the "future" package
-plan_strategy <- "multisession"
-
-# pglyco
-reversed_regexpr <- "^REV_"   # decoy sequences 
-pglyco_separator <- "/"       # separator in pGlyco
-
-# default config file for pGlyco
-pglyco_config_default <- c("[version]",
-                           "pGlyco_version=pGlyco_Tag20190101",
-                           "[flow]",
-                           "glyco_type=N-Glyco",
-                           "glycandb=pGlyco.gdb",
-                           "process=1",
-                           "output_dir=C:\\",
-                           "[protein]",
-                           "fasta=",
-                           "enzyme=Trypsin_KR-C",
-                           "digestion=not_support_in_cur_version",
-                           "max_miss_cleave=2",
-                           "max_peptide_len=40",
-                           "min_peptide_len=6",
-                           "max_peptide_weight=4000",
-                           "min_peptide_weight=600",
-                           "[modification]",
-                           "fix_total=3",
-                           "fix1=Carbamidomethyl[C]",
-                           "fix2=TMT6plex[K]",
-                           "fix3=TMT6plex[AnyN-term]",
-                           "max_var_modify_num=3",
-                           "var_total=1",
-                           "var1=Oxidation[M]",
-                           "[search]",
-                           "search_precursor_tolerance=10",
-                           "search_precursor_tolerance_type=ppm",
-                           "search_fragment_tolerance=20",
-                           "search_fragment_tolerance_type=ppm",
-                           "spec_file_type=mgf",
-                           "spectrum_total=")
-
-pglyco3_config_default <- c("[version]",
-                            "pGlyco_version=pGlyco3.0.rc2",
-                            "pGlyco_type=pGlycoDB",
-                            "[ini]",
-                            "glycoini=glyco.ini",
-                            "modini=modification.ini",
-                            "[glycan]",
-                            "glycan_type=N-Glycan",
-                            "glycan_db=pGlyco-N-Human.gdb",
-                            "glycan_fix_mod=",
-                            "glycan_var_mod=",
-                            "max_var_mod_on_glycan=1",
-                            "max_glycan_db_size=100000",
-                            "[protein]",
-                            "fasta=", 
-                            "enzyme=Trypsin KR _ C",
-                            "digestion=specific",
-                            "max_miss_cleave=2",
-                            "min_peptide_len=6",
-                            "max_peptide_len=40",
-                            "min_peptide_weight=600",
-                            "max_peptide_weight=4000",
-                            "protein_fix_mod=Carbamidomethyl[C]",
-                            "protein_var_mod=Oxidation[M],Acetyl[ProteinN-term]",
-                            "max_var_mod_on_peptide=2",
-                            "[search]",
-                            "precursor_tolerance=10",
-                            "precursor_tolerance_type=ppm",
-                            "fragment_tolerance=20",
-                            "fragment_tolerance_type=ppm",
-                            "fragmentation_type=HCD",
-                            "spec_file_type=raw",
-                            "spectrum_total=1",
-                            "file1=",
-                            "top_n_peaks=300",
-                            "output_top_n=5",
-                            "percolator=0",
-                            "FDR=0.01",
-                            "FMM_for_peptide_FDR=0",
-                            "pGlycoSite_check_db=1",
-                            "output_dir=")
-
-marker_ions <- c("Mass;Marker;Formula
-                  109.028;Hex_fragm;C6H4O2
-                  115.039;Hex_fragm;C5H6O3
-                  126.055;HexNAc_fragm;C6H7O2N1
-                  127.039;Hex_2xH2O;C6H6O3
-                  138.055;HexNAc_fragm;C7H7O2N1
-                  144.066;HexNAc_fragm;C6H9O3N1
-                  163.060;Hex;C6H10O5
-                  168.066;HexNAc_2xH2O;C8H9O3N1
-                  186.076;HexNAc_2xH2O;C8H11O4N1
-                  204.087;HexNAc;C8H13O5N1
-                  274.092;NeuAc_H2O;C11H15O7N1
-                  290.087;NeuGc_H2O;C11H15O8N1
-                  292.103;NeuAc;C11H17O8N1
-                  308.098;NeuGc;C11H17O9N1
-                  366.140;Hex_HexNAc;C14H23O10N1
-                  657.140;Hex_HexNAc_NeuAc;C25H40O18N2
-                  673.230;Hex_HexNAc_NeuGc;C25H40O19N2")
-
-#if(!file.exists("marker_ions.txt")) fwrite(marker_ions, "marker_ions.txt", sep = "\t")
-
-# variables that will be set through arguments
-verbose                   <- TRUE   # verbosity
-nr_threads                <- 2      # number of threads to use 
-ion_match_tolerance       <- 1      # width of the tolerance window for ion matching
-tolerance_unit            <- "ppm"  # unit for the tolerance window
-reporter_ions_type        <- "TMT6" # type of reporter ions
-seq_wind_size             <- 7      # number of aa from each side of the modified residue
-pglyco_fdr_threshold      <- 0.02  # total FDR cutoff
-report_intermediate_files <- FALSE
-skip_marker_ions          <- FALSE
-parent_area_fun           <- "sum"
-
-##### collect arguments and set working directory #####
-args <- (commandArgs(TRUE))
-
-# working directory
-message("Provided arguments:\n", paste(as.character(args), collapse = "\n"), "\n")
-
-wd   <- file.path(args[which(args == "--wd") + 1])
-
-if(length(wd) == 0){
-  
-  if(verbose) message("working directory not specified, use default ", getwd())
-  wd <- file.path(getwd())
-  
-}
-
-if(length(wd) == 0 || !dir.exists(wd)) stop("Cannot find working directory. Check the path and agument specifications.")
-
-setwd(wd)
-message("Set working directory to ", getwd())
-
-##### find raw files in the working directory #####
-
-raw_file_names <- list.files(pattern = paste0("\\.", raw_file_extension, "$"))
-
-if(length(raw_file_names) == 0) stop(paste0("Cannot find .", raw_file_extension, " files in the specified directory"))
-message(paste0("Found raw files:\n", paste(raw_file_names, collapse = "\n")))
-
-if(any(grepl("\\.", gsub(paste0(".", raw_file_extension), "", raw_file_names)))) stop("Dots . are not allowed in raw file names (except .raw file extension)")
-
-
-##### collect other arguments #####
-
-# verbose
-if(any(grepl("--verbose", args))) verbose <- TRUE else verbose <- FALSE
-
-# tolerance unit for merging MS2 and MS3 spectra
-tolerance_unit <- args[which(args == "--tol_unit") + 1]
-if(length(tolerance_unit) != 1 || !tolerance_unit %in% c("ppm", "Th")) {
-  
-  tolerance_unit <- "ppm"
-  if(verbose) message("set tolerance unit to ", tolerance_unit)
-  
-}
-
-ion_match_tolerance <- as.integer(args[which(args == "--match_tol") + 1])
-if(length(ion_match_tolerance) != 1 || is.na(ion_match_tolerance) || ion_match_tolerance == 0) {
-  
-  ion_match_tolerance <- 1
-  if(verbose) message("set ion match tolerance to ", ion_match_tolerance, tolerance_unit)
-  
-}
-
-# reporter ion type parameter for RawTools
-reporter_ions_type <- args[which(args == "--reporter_ion") + 1 ]
-if(length(reporter_ions_type) != 1 ||
-   !reporter_ions_type %in% c("TMT0",
-                              "TMT2",
-                              "TMT6",
-                              "TMT10",
-                              "TMT11",
-                              "TMT16",
-                              "iTRAQ4",
-                              "iTRAQ8")) stop("Reporter ion type is not provided or is not correct.")
-
-# pglyco fdr threshold
-
-pglyco_fdr_threshold <- as.numeric(args[which(args == "--pglyco_fdr_threshold") + 1])
-if(length(pglyco_fdr_threshold) != 1 || is.na(pglyco_fdr_threshold) || pglyco_fdr_threshold <= 0 || pglyco_fdr_threshold >= 1){
-  
-  pglyco_fdr_threshold <- 0.02
-  if(verbose) message("set pglyco fdr threshold to ", pglyco_fdr_threshold)
-  
-}
-
-# perform second pglyco search on the reduced fasta file
-if(any(grepl("--no_second_search", args))) second_search <- FALSE else second_search <- TRUE
-
-
-# define sequence window size, +/- n amino acids around modified residue
-seq_wind_size <- as.numeric(args[which(args == "--seq_wind_size") + 1])
-if(length(seq_wind_size) != 1 || is.na(seq_wind_size) || seq_wind_size <= 1 || pglyco_fdr_threshold > 100){
- 
-  seq_wind_size <- 7
-  if(verbose) message("set pglyco sequence window size to +/-", pglyco_fdr_threshold)
-   
-}
-
-#report intermediate results
-if(any(grepl("--report_intermediate_files", args))) report_intermediate_files <- TRUE else report_intermediate_files <- FALSE
-
-# skip search for marer ions
-if(any(grepl("--skip_marker_ions", args))) skip_marker_ions <- TRUE
-
-# perform second pglyco search on the reduced fasta file
-if(any(grepl("--parent_area_fun", args))) parent_area_fun <- as.character(args[which(args == "--parent_area_fun") + 1])
-if(!parent_area_fun %in% c("sum", "median", "mean", "max", "min")){
-  
-  message("\nIncorrect function provided for --parent_area_fun argument. Use sum as default function")
-  parent_area_fun <- "sum"
-  
-  } 
-
-# number of available threads
-nr_threads   <- args[which(grepl("--nr_threads", args)) + 1]
-nr_threads   <- as.integer(nr_threads)
-nr_of_processors <- shell("set NUMBER_OF_PROCESSORS", intern = TRUE)
-nr_of_processors <- gsub("NUMBER_OF_PROCESSORS=", "", nr_of_processors)
-nr_of_processors <- as.integer(nr_of_processors)
-
-if(is.na(nr_threads) || length(nr_threads) == 0 || nr_threads < 1 || nr_threads > (nr_of_processors - 1)){
-  
-  nr_threads <- max(nr_of_processors - 2, 1)
-  if(verbose) message("set number of threads to ", nr_threads)
-  
-}
-
-if(nr_threads > length(raw_file_names)) nr_threads <- length(raw_file_names)
-
 
 ##### Load required packages #####
 
@@ -310,6 +72,36 @@ library("data.table")
 library("future.apply")
 
 ##### custom functions ######
+
+# write logs
+writeLog <- function(log_gb, new1 = "", new2 = ""){
+  
+  if(file.exists("Glycobinder.log.txt")) log_gb <- readLines("Glycobinder.log.txt") else log_gb <- character()
+  writeLines(append(log_gb, c(paste0("[", Sys.time(), "] ", new1),
+                              new2)), "Glycobinder.log.txt")
+}
+
+# collect arguments
+collectArgs <- function(arg, collection, default = NA,
+                        transform_fun = NULL, check_fun = NULL,
+                        verbose = TRUE){
+  
+  if(any(collection == arg)) x <- collection[which(collection == arg) + 1] else {
+    
+    if(verbose) message("set ", arg, " to default: ", default)
+    return(default)
+    
+  }
+  if(!is.null(transform_fun)) x <- suppressWarnings(transform_fun(x))
+  if(!is.null(check_fun)) check <- check_fun(x) else check <- TRUE
+  if(check == TRUE) return(x) else {
+    
+    if(verbose) message("set ", arg, " to default: ", default)
+    return(default)
+    
+  }
+  
+}
 
 # read MGF files
 readMgf_msconv    <- function(path){
@@ -519,6 +311,7 @@ merge_ms2_ms3 <- function(matrix_data, mgf_tab,
   
 }
 
+# find marker ions
 ion_match <- function(marker_ions,
                       mgf,
                       ion_match_tolerance,
@@ -767,6 +560,206 @@ run_msconvert <- function(file_name, out_dir){
   
 }
 
+##### define some variables #####
+
+raw_file_extension      <- "raw"
+supported_reporter_ions <- c("TMT0",
+                             "TMT2",
+                             "TMT6",
+                             "TMT10",
+                             "TMT11",
+                             "TMT16",
+                             "iTRAQ4",
+                             "iTRAQ8")
+
+# parallelizing strategy for the "future" package
+plan_strategy <- "multisession"
+
+# pglyco
+reversed_regexpr <- "^REV_"   # decoy sequences 
+pglyco_separator <- "/"       # separator in pGlyco
+
+# default config file for pGlyco
+pglyco_config_default <- c("[version]",
+                           "pGlyco_version=pGlyco_Tag20190101",
+                           "[flow]",
+                           "glyco_type=N-Glyco",
+                           "glycandb=pGlyco.gdb",
+                           "process=1",
+                           "output_dir=C:\\",
+                           "[protein]",
+                           "fasta=",
+                           "enzyme=Trypsin_KR-C",
+                           "digestion=not_support_in_cur_version",
+                           "max_miss_cleave=2",
+                           "max_peptide_len=40",
+                           "min_peptide_len=6",
+                           "max_peptide_weight=4000",
+                           "min_peptide_weight=600",
+                           "[modification]",
+                           "fix_total=3",
+                           "fix1=Carbamidomethyl[C]",
+                           "fix2=TMT6plex[K]",
+                           "fix3=TMT6plex[AnyN-term]",
+                           "max_var_modify_num=3",
+                           "var_total=1",
+                           "var1=Oxidation[M]",
+                           "[search]",
+                           "search_precursor_tolerance=10",
+                           "search_precursor_tolerance_type=ppm",
+                           "search_fragment_tolerance=20",
+                           "search_fragment_tolerance_type=ppm",
+                           "spec_file_type=mgf",
+                           "spectrum_total=")
+
+# pglyco3_config_default <- c("[version]",
+#                             "pGlyco_version=pGlyco3.0.rc2",
+#                             "pGlyco_type=pGlycoDB",
+#                             "[ini]",
+#                             "glycoini=glyco.ini",
+#                             "modini=modification.ini",
+#                             "[glycan]",
+#                             "glycan_type=N-Glycan",
+#                             "glycan_db=pGlyco-N-Human.gdb",
+#                             "glycan_fix_mod=",
+#                             "glycan_var_mod=",
+#                             "max_var_mod_on_glycan=1",
+#                             "max_glycan_db_size=100000",
+#                             "[protein]",
+#                             "fasta=", 
+#                             "enzyme=Trypsin KR _ C",
+#                             "digestion=specific",
+#                             "max_miss_cleave=2",
+#                             "min_peptide_len=6",
+#                             "max_peptide_len=40",
+#                             "min_peptide_weight=600",
+#                             "max_peptide_weight=4000",
+#                             "protein_fix_mod=Carbamidomethyl[C]",
+#                             "protein_var_mod=Oxidation[M],Acetyl[ProteinN-term]",
+#                             "max_var_mod_on_peptide=2",
+#                             "[search]",
+#                             "precursor_tolerance=10",
+#                             "precursor_tolerance_type=ppm",
+#                             "fragment_tolerance=20",
+#                             "fragment_tolerance_type=ppm",
+#                             "fragmentation_type=HCD",
+#                             "spec_file_type=raw",
+#                             "spectrum_total=1",
+#                             "file1=",
+#                             "top_n_peaks=300",
+#                             "output_top_n=5",
+#                             "percolator=0",
+#                             "FDR=0.01",
+#                             "FMM_for_peptide_FDR=0",
+#                             "pGlycoSite_check_db=1",
+#                             "output_dir=")
+
+marker_ions <- c("Mass;Marker;Formula
+                  109.028;Hex_fragm;C6H4O2
+                  115.039;Hex_fragm;C5H6O3
+                  126.055;HexNAc_fragm;C6H7O2N1
+                  127.039;Hex_2xH2O;C6H6O3
+                  138.055;HexNAc_fragm;C7H7O2N1
+                  144.066;HexNAc_fragm;C6H9O3N1
+                  163.060;Hex;C6H10O5
+                  168.066;HexNAc_2xH2O;C8H9O3N1
+                  186.076;HexNAc_2xH2O;C8H11O4N1
+                  204.087;HexNAc;C8H13O5N1
+                  274.092;NeuAc_H2O;C11H15O7N1
+                  290.087;NeuGc_H2O;C11H15O8N1
+                  292.103;NeuAc;C11H17O8N1
+                  308.098;NeuGc;C11H17O9N1
+                  366.140;Hex_HexNAc;C14H23O10N1
+                  657.140;Hex_HexNAc_NeuAc;C25H40O18N2
+                  673.230;Hex_HexNAc_NeuGc;C25H40O19N2")
+
+# variables that will be set through arguments
+verbose                   <- TRUE   # verbosity
+nr_threads                <- 2      # number of threads to use 
+ion_match_tolerance       <- 1      # width of the tolerance window for ion matching
+tolerance_unit            <- "ppm"  # unit for the tolerance window
+reporter_ion              <- "TMT6" # type of reporter ions
+seq_wind_size             <- 7      # number of aa from each side of the modified residue
+pglyco_fdr_threshold      <- 0.02  # total FDR cutoff
+report_intermediate_files <- FALSE
+skip_marker_ions          <- FALSE
+parent_area_fun           <- "sum"
+
+##### collect arguments and set working directory #####
+args <- (commandArgs(TRUE))
+
+# log information
+message("Provided arguments:\n", paste(as.character(args), collapse = "\n"), "\n")
+writeLog(log_gb, "Glycobinder started with arguments:", paste(as.character(args), collapse = " "))
+
+# working directory
+wd <- collectArgs("--wd", args, default = getwd(),
+                  check_fun = function(x) all(length(x) == 1 & dir.exists(x)))
+setwd(wd)
+
+##### find raw files in the working directory #####
+raw_file_names <- list.files(pattern = paste0("\\.", raw_file_extension, "$"))
+
+if(length(raw_file_names) == 0) stop(paste0("Cannot find .", raw_file_extension, " files in the specified directory"))
+message(paste0("Found raw files:\n", paste(raw_file_names, collapse = "\n")))
+
+if(any(grepl("\\.", gsub(paste0(".", raw_file_extension), "", raw_file_names)))) stop("Dots . are not allowed in raw file names (except .raw file extension)")
+
+
+##### collect further arguments #####
+
+# verbose
+if(any(grepl("--verbose", args))) verbose <- TRUE else verbose <- FALSE
+
+# tolerance unit for merging MS2 and MS3 spectra
+tolerance_unit <- collectArgs("--tol_unit", args, default = "ppm", 
+                              check_fun = function(x) all(length(x) == 1 & x %in% c("ppm", "Th")))
+
+# tolerance for merging MS2 and MS3 spectra
+ion_match_tolerance <- collectArgs("--match_tol", args, default = 1, verbose = verbose,
+                                   transform_fun = function(x) as.integer(x),
+                                   check_fun = function(x) all(length(x) == 1 & !is.na(x) & x != 0))
+
+# reporter ion type parameter for RawTools
+reporter_ion <- collectArgs("--reporter_ion", args, default = NA,
+                            check_fun = function(x) all(length(x) == 1 & x %in% supported_reporter_ions))
+if(is.na(reporter_ion)) stop("Reporter ion type is not provided or not correct.")
+
+
+# pglyco fdr threshold
+pglyco_fdr_threshold <- collectArgs("--pglyco_fdr_threshold", args, default = 0.02,
+                                    transform_fun = function(x) as.numeric(x),
+                                    check_fun = function(x) all(length(x) == 1 & x & !is.na(x) & x > 0 & x <= 1))
+
+# define sequence window size, +/- n amino acids around modified residue
+seq_wind_size <- collectArgs("--seq_wind_size", args, default = 7,
+                             transform_fun = function(x) as.numeric(x),
+                             check_fun = function(x) all(length(x) == 1 & x & !is.na(x) & x >= 1 & x < 100))
+
+# function for aggregating parent peak areas
+parent_area_fun <-  collectArgs("--parent_area_fun", args, default = "sum",
+                                check_fun = function(x) all(length(x) == 1 & x %in% c("sum", "median", "mean", "max", "min")))
+
+# number of available threads
+nr_of_processors <- shell("set NUMBER_OF_PROCESSORS", intern = TRUE)
+nr_of_processors <- gsub("NUMBER_OF_PROCESSORS=", "", nr_of_processors)
+nr_of_processors <- as.integer(nr_of_processors)
+
+nr_threads <- collectArgs("--nr_threads", args, default = max(nr_of_processors - 2, 1), verbose = verbose,
+                          transform_fun = function(x) as.integer(x),
+                          check_fun = function(x) all(length(x) == 1 & !is.na(x) & x >= 1 & x <= nr_of_processors))
+if(nr_threads > length(raw_file_names)) nr_threads <- length(raw_file_names)
+
+# perform second pglyco search on the reduced fasta file
+if(any(grepl("--no_second_search", args))) second_search <- FALSE else second_search <- TRUE
+
+#report intermediate results
+if(any(grepl("--report_intermediate_files", args))) report_intermediate_files <- TRUE else report_intermediate_files <- FALSE
+
+# skip search for marker ions
+if(any(grepl("--skip_marker_ions", args))) skip_marker_ions <- TRUE
+
+
 ##### run RawTools #####
 
 if(!all(file.exists(paste0("rawtools_output\\", raw_file_names, "_Matrix.txt")))) {
@@ -781,7 +774,7 @@ if(!all(file.exists(paste0("rawtools_output\\", raw_file_names, "_Matrix.txt")))
     )
     
     # prepare a string of arguments
-    RawTools_args    <- c('-parse', '-d', paste0('"', wd, '"'), '-out', paste0('"', wd, '/rawtools_output', '"'), '-q', '-r', reporter_ions_type, '-R', '-u') # pay attention to file paths with empty spaces!
+    RawTools_args    <- c('-parse', '-d', paste0('"', wd, '"'), '-out', paste0('"', wd, '/rawtools_output', '"'), '-q', '-r', reporter_ion, '-R', '-u') # pay attention to file paths with empty spaces!
     message(paste0("Running Rawtools with arguments ", paste(RawTools_args, collapse = " ")))
     
     # run the command
@@ -1311,13 +1304,13 @@ if(!output_pglyco1_exists &&                 # output from the first pGlyco sear
       #fixed modifications
       
       # fixed modification should match the reporter_ion_type parameter for RawTools
-      if(reporter_ions_type == "TMT0"){
+      if(reporter_ion == "TMT0"){
         
         fixed_mod_reporter <- "TMT"
         
       } else {
         
-        fixed_mod_reporter <- paste0(reporter_ions_type, "plex")
+        fixed_mod_reporter <- paste0(reporter_ion, "plex")
         
       }
       
@@ -1523,13 +1516,13 @@ if(any(grepl("^pGlyco_task.*\\.pglyco$", list.files()))){ #check if configuratio
   #fixed modifications
   
   # fixed modification should match the reporter_ion_type parameter for RawTools
-  if(reporter_ions_type == "TMT0"){
+  if(reporter_ion == "TMT0"){
     
     fixed_mod_reporter <- "TMT"
     
   } else {
     
-    fixed_mod_reporter <- paste0(reporter_ions_type, "plex")
+    fixed_mod_reporter <- paste0(reporter_ion, "plex")
     
   }
   
@@ -2170,3 +2163,6 @@ if(verbose) proc.time() - ptm_transform_out
 message("\nDONE!\n")
 
 if(verbose) proc.time() - ptm
+writeLog(log_gb, new1 = paste0("Processing time: "), new2 = c(paste0("user: ", round((proc.time() - ptm)[1], 4)),
+                                                              paste0("system: ", round((proc.time() - ptm)[2], 4)),
+                                                              paste0("elapsed: ", round((proc.time() - ptm)[3], 4))))
