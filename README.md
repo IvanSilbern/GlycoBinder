@@ -212,7 +212,7 @@ Per default, ParentPeakArea is the sum of the corresponding parent peak areas.
 Relative parent peak area is reported based on the relative intensities of the reporter ions.  
 The total reporter ion intensity is reported in the `TotalRepIonIntensity` column.  
 Relative reporter ion intensities are reported as percentages in `{ReporterIon}IntensityPercent` columns, e.g., `126IntensityPercent` for a TMT-126 reporter ion.
-Relative parent peak area is then calculated as 0.01*`{ReporterIon}IntensityPercent`*ParentPeakArea and reported as `{ReporterIon}IntensityPercent_ParentPeakArea`.
+Relative parent peak area is then calculated as 0.01*`{ReporterIon}IntensityPercent`*ParentPeakArea and reported as `{ReporterIon}IntensityParentPeakArea`.
 
 ### Special case: use of another search engine
 
