@@ -104,7 +104,7 @@ collectArgs <- function(arg, collection, default = NA,
 }
 
 # read MGF files
-readMgf_msconv    <- function(path){
+readMgf    <- function(path){
   
   # function reads mgf file into a data table of scans
   # scans are separated  based on "BEGIN IONS" and "END IONS" lines
@@ -159,7 +159,7 @@ readMgf_msconv    <- function(path){
              key         = "scan_number")
   
 }
-readMgf_pParse    <- function(path){
+readMgfHeader    <- function(path){
   
   # function reads mgf file into a data table of scans
   # it preserves only SCAN NUMBERS and SCAN HEADERS without ion information
@@ -196,7 +196,7 @@ merge_ms2_ms3 <- function(matrix_data, mgf_tab,
   # Function combines ms2 and ms3 ion intensities
   # Arguments:
   # matrix_data = _Matrix.txt file from RawTools loaded as a data table
-  # mgf_tab = msconvert mgf file read in with readMgf_msconver function
+  # mgf_tab = msconvert mgf file read in with readMgf function
   # ion_match_tolerance = tolerance window for matching ions
   # tolerance_unit = units of the tolerance window
   #
@@ -373,7 +373,7 @@ change_ions_pParse <- function(mgf_tab, mgf_pParse, file_name, step = 500){
   
   if(file.exists(file_name)) suppressWarnings(file.remove(file_name)) 
   
-  mgf_pParse <- readMgf_pParse(mgf_pParse)
+  mgf_pParse <- readMgfHeader(mgf_pParse)
   mgf_pParse <- merge(mgf_pParse, mgf_tab[, c("scan_number", "ions")], by = "scan_number", all.x = TRUE)
   
   if(nrow(mgf_pParse) < 1) stop()
@@ -1135,7 +1135,7 @@ if(any(contain_ms3) && !all(file.exists(paste0("pparse_output/", gsub("\\.raw$",
     mtx <- fread(paste0("rawtools_output/", file_name, "_Matrix.txt"))
     
     # read mgf file (msconvert output)
-    mgf_tab <- readMgf_msconv(paste0("msconvert_output/", gsub("\\.raw", ".mgf", file_name)))
+    mgf_tab <- readMgf(paste0("msconvert_output/", gsub("\\.raw", ".mgf", file_name)))
     
     invisible(  
       merge_ms2_ms3(mgf_tab = mgf_tab,
@@ -1208,7 +1208,7 @@ local({
   list_dt <- future_lapply(raw_file_names, FUN = function(file_name){
     
     # read mgf file (msconvert output)
-    mgf <- readMgf_msconv(paste0("pparse_output/", gsub(".raw", "_pParse_mod.mgf", file_name)))
+    mgf <- readMgf(paste0("pparse_output/", gsub(".raw", "_pParse_mod.mgf", file_name)))
     
     # remove duplicated scan numbers (pParse assigns multiple precursor masses per scan)
     mgf <- mgf[!duplicated(mgf$scan_number)] 
