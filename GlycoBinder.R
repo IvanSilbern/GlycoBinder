@@ -205,107 +205,118 @@ merge_ms2_ms3 <- function(matrix_data, mgf_tab,
   
   invisible(
     
-    lapply(seq_along(matrix_data$MS2ScanNumber), function(row_nr){
+    lapply(1:matrix_data[, .N], function(row_nr){
       
       scan_ms2 <- which(mgf_tab$scan_number == matrix_data$MS2ScanNumber[row_nr])[1]
       scan_ms3 <- which(mgf_tab$scan_number == matrix_data$MS3ScanNumber[row_nr])[1]
       
-      ms2_ions <- mgf_tab[scan_ms2, ions][[1]]
-      ms3_ions <- mgf_tab[scan_ms3, ions][[1]]
+      ms2 <- mgf_tab[scan_ms2, ions][[1]]
+      ms3 <- mgf_tab[scan_ms3, ions][[1]]
       
-      if(length(ms2_ions) == 0 || length(ms3_ions) == 0) return(NULL)
+      if(length(ms2) == 0 || length(ms3) == 0) return(NULL)
       
       # first do a rough match by integer ion mz
-      not_matching <- which(!floor(ms3_ions[, 1]) %in% c(floor(ms2_ions[, 1]), (floor(ms2_ions[, 1]) - 1), (floor(ms2_ions[, 1]) + 1)))
+      not_matching <- which(!floor(ms3[, 1]) %in% c(floor(ms2[, 1]),
+                                                        (floor(ms2[, 1]) - 1),
+                                                        (floor(ms2[, 1]) + 1)))
       
-      # check remaining for overlap precisely
-      if(length(not_matching) < length(ms3_ions[, 1])){
+      # combine spectra and stop if there are no matches
+      if(length(not_matching) == length(ms3[, 1])){
         
-        probable_match <- setdiff(seq_along(ms3_ions[, 1]), not_matching) # indices of ms3 ions that might have a match to ms2 ions
-        test_ions      <- ms3_ions[probable_match, 1]                     # mz values of ms3 ions that might have a match to ms2 ions
-        differences    <- abs(outer(test_ions, ms2_ions[, 1], FUN = "-")) # mz differences between ms3 and ms2 ions
-        
-        # provide tolerance level for each ms3 ion
-        if(tolerance_unit == "ppm"){
-          
-          tolerances <- ion_match_tolerance*ms3_ions[probable_match, 1]/10^6
-          
-        } else if(tolerance_unit == "Th"){
-          
-          tolerances <- rep(ion_match_tolerance, rep = length(probable_match))
-          
-        } else {
-          
-          message("ion matching tolerance is 1Th")
-          tolerances <- rep(1, rep = length(ms3_ions[-not_matching, 1]))
-          
-        }
-        
-        # which ions passed the tolerance cutoff
-        passed_tolerance_cutoff <- which(differences < tolerances | dplyr::near(differences, tolerances), arr.ind = TRUE)
-        
-        
-        # update the list only if there are ions passed the cutoff
-        if(length(passed_tolerance_cutoff) > 1){
-          
-          passed_tolerance_cutoff <- data.table(passed_tolerance_cutoff)
-          passed_tolerance_cutoff <- passed_tolerance_cutoff[, .(ms2 = list(c(col))), by = row]
-          
-          # one ms3 spectrum (row) -> one ms2 spectrum (ms2)
-          for(i in as.integer(which(lengths(passed_tolerance_cutoff[["ms2"]]) > 1))){
-            best <- which.min(abs(ms2_ions[passed_tolerance_cutoff[i, ms2][[1]]] - test_ions[passed_tolerance_cutoff[i, row]]))
-            set(passed_tolerance_cutoff,
-                i = i,
-                j = "ms2",
-                value = list(list(passed_tolerance_cutoff[i, ms2][[1]][best])))
-          }
-          set(passed_tolerance_cutoff, j = "ms2", value = as.integer(unlist(passed_tolerance_cutoff[["ms2"]])))
-          
-          # group by ms2 spectra
-          passed_tolerance_cutoff2 <- passed_tolerance_cutoff[, .(ms3 = list(c(row))), by = ms2]
-          
-          # one ms2 spectrum (row) -> one ms3 spectrum
-          for(i in as.integer(which(lengths(passed_tolerance_cutoff2[["ms3"]]) > 1))){
-            best <- which.min(abs(ms2_ions[passed_tolerance_cutoff2[i, ms2]] - test_ions[passed_tolerance_cutoff2[i, ms3][[1]]]))
-            set(passed_tolerance_cutoff2,
-                i = i,
-                j = "ms3",
-                value = list(list(passed_tolerance_cutoff2[i, ms3][[1]][best])))
-          }
-          set(passed_tolerance_cutoff2, j = "ms3", value = as.integer(unlist(passed_tolerance_cutoff2[["ms3"]])))
-          
-          # get an actual index in ms3_ions (ms3 was pointing to probable_match)
-          set(passed_tolerance_cutoff2, j = "ms3", value = probable_match[passed_tolerance_cutoff2[["ms3"]]])
-          
-          ms2_ions[passed_tolerance_cutoff2[["ms2"]], 2] <- rowSums(matrix(c(ms2_ions[passed_tolerance_cutoff2[["ms2"]], 2],
-                                                                             ms3_ions[passed_tolerance_cutoff2[["ms3"]], 2]), 
-                                                                           byrow =FALSE, ncol = 2))
-          
-        }
-        
-        # update vector of indices of not_matching ions
-        if(length(passed_tolerance_cutoff) == 0){
-          
-          not_matching    <- unique(c(not_matching, probable_match))
-          
-        } else {
-          
-          not_matching    <- unique(c(not_matching, probable_match[-passed_tolerance_cutoff2[["ms3"]]]))  
-          
-        }
-        
-        
-        
+        ms2 <- rbind(ms2, ms3)
+        ms2 <- ms2[order(ms2[, 1]), ]
+        set(mgf_tab, i = scan_ms2, j = "ions", value = list(list(ms2)))
+        return(NULL)
+       
       }
       
-      # add not matching ms3 ions
-      ms2_ions <- rbind(ms2_ions, ms3_ions[not_matching, ])
+      # check remaining for overlap precisely
+      probable_match <- setdiff(seq_along(ms3[, 1]), not_matching) # indices of ms3 ions that might have a match to ms2 ions
+      test_ms3_ions  <- ms3[probable_match, 1]                     # mz values of ms3 ions that might have a match to ms2 ions
+      differences    <- abs(outer(test_ms3_ions, ms2[, 1], FUN = "-")) # mz differences between ms3 and ms2 ions
+        
+      # provide tolerance level for each ms3 ion
+      if(tolerance_unit == "ppm"){
+        
+         tolerances <- ion_match_tolerance*ms3[probable_match, 1]/10^6
+          
+      } else if(tolerance_unit == "Th"){
+          
+         tolerances <- rep(ion_match_tolerance, times = length(probable_match))
+          
+      } else {
+          
+         message("ion matching tolerance is 1Th")
+         tolerances <- rep(1, times = length(probable_match))
+          
+      }
+        
+      # which ions passed the tolerance cutoff
+      passed <- data.table(which(differences < tolerances | dplyr::near(differences, tolerances), arr.ind = TRUE))
+        
+      # combine spectra and stop if there are no ions that passed tolerance cutoff
+      if(passed[, .N] == 0) {
+        
+        ms2 <- rbind(ms2, ms3)
+        ms2 <- ms2[order(ms2[, 1]), ]
+        set(mgf_tab, i = scan_ms2, j = "ions", value = list(list(ms2)))
+        return(NULL)
+        
+        }
+        
+      # if one ms3 ion (row) corresponds to several ms2 ions, their indices will be saved as a list 
+      passed <- passed[, .(ms2_ind = list(c(col))), by = row]
+          
+      # one ms3 ion (row) -> one ms2 ion (ms2)
+      # decide which ions to merge
+      # ms2 column is a list, ms2[[1]] is required
       
+      if(all(lengths(passed$ms2_ind) == 1)){
+        
+        passed[, best_ms2 := unlist(ms2_ind)]
+        
+        } else {
+      
+        passed[, best_ms2 := ms2_ind[[1]][1], by = "row"]
+        passed[lengths(ms2_ind) > 1, best_ms2 := ms2_ind[which.min(abs(ms2[ms2_ind[[1]]] - test_ms3_ions[row]))], by = "row"]
+            
+       }
+      
+      # one ms2 spectrum (row) -> one ms3 spectrum
+      # decide which ions to merge
+      # group by ms2 spectra
+      # note: ms3 column is a list, ms3[[1]] is required
+      passed2 <- passed[, .(ms3_ind = list(c(row))), by = best_ms2]
+      
+      if(all(lengths(passed2$ms3_ind) == 1)){
+      
+        passed2[, best_ms3 := unlist(ms3_ind)]
+        
+      } else {
+        
+        passed2[, best_ms3 := ms3_ind[[1]][1], by = "best_ms2"]
+        passed2[lengths(ms3_ind) > 1, best_ms3 := ms3_ind[which.min(abs(ms2[best_ms2] - test_ms3_ions[ms3_ind[[1]]]))], by = "best_ms2"]
+        
+      }
+        
+        
+      # get an actual index in ms3 (ms3_ind was pointing to probable_match)
+      passed2[, best_ms3 := probable_match[best_ms3], by = "best_ms2"]
+          
+      ms2[passed2[["best_ms2"]], 2] <- rowSums(matrix(c(ms2[passed2[["best_ms2"]], 2],
+                                                            ms3[passed2[["best_ms3"]], 2]), 
+                                                            byrow =FALSE, ncol = 2))
+      # remove matched ms3 ions
+      ms3 <- ms3[-passed2[["best_ms3"]], ]
+        
+      # combine ms2 and not-matching ms3 ions
+      ms2 <- rbind(ms2, ms3) 
+      ms2 <- ms2[order(ms2[, 1]), ]
+        
       # update mgf
-      set(mgf_tab, i = scan_ms2, j = "ions", value = list(list(ms2_ions[order(ms2_ions[, 1]), ])))
-      
+      set(mgf_tab, i = scan_ms2, j = "ions", value = list(list(ms2)))
       return(NULL)
-      
+        
     })
   )
   
@@ -341,11 +352,10 @@ ion_match <- function(marker_ions,
     }
     
     # which ions passed the tolerance cutoff
-    passed_tolerance_cutoff <- which(delta_m < tolerances | dplyr::near(delta_m, tolerances), arr.ind = TRUE)
-    passed_tolerance_cutoff <- delta_m < tolerances | dplyr::near(delta_m, tolerances)
+    passed <- delta_m < tolerances | dplyr::near(delta_m, tolerances)
     
     temp   <- data.table()
-    temp   <- temp[, lapply(data.frame(passed_tolerance_cutoff), function(x) sum(intensity[x]))]
+    temp   <- temp[, lapply(data.frame(passed), function(x) sum(intensity[x]))]
     dt <- rbind(dt, temp)
     
   }
@@ -1675,7 +1685,7 @@ local({
   Search_file[, RawName := gsub("\\..+$", "", Search_file$GlySpec)] 
   
   # read marker ion intensities
-  marker_dt <- fread("pglyco_output/marker_ions_identified.txt")
+  if(!skip_marker_ions) marker_dt <- fread("pglyco_output/marker_ions_identified.txt")
   
   #combine matrix files into a single file
   matrix_name <- stringr::str_split(matrix_files, "\\.", simplify = TRUE)[, 1]
@@ -1692,7 +1702,9 @@ local({
   }
   Search_match_all <- merge(Search_file, Matrix_file,
                             by.x = c("RawName", "Scan"), by.y = c("RawName", "MS2ScanNumber"))
-  Search_match_all <- merge(Search_match_all, marker_dt, by = c("Scan", "RawName"), all.x = TRUE)
+  
+  
+  if(!skip_marker_ions) Search_match_all <- merge(Search_match_all, marker_dt, by = c("Scan", "RawName"), all.x = TRUE)
   
   # write combined data
   fwrite(Search_match_all, "pglyco_output/pglyco_quant_results.txt",
