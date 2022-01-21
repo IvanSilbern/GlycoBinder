@@ -201,13 +201,13 @@ The table contains intensities of all identified marker ions per scan/raw file.
 
 GlycoBinder reports putative glycan type / glycan antenna type in `GlycanType` and `GlycanAntennaType`, respectively.  
 The types are deduced based on the glycan composition reported in `Glycan(H,N,A,G,F)` by *pGlyco*. Following glycan type//antenna types were defined:  
-`Paucimannose//Paucimannose`: HexNAc(2)Hex(1-4)NeuAc(0)Fuc(x);  
-`High-mannose//High-mannose`: HexNAc(2)Hex(5-9)NeuAc(0)Fuc(0);  
-`Initiation//Initiation`: HexNAc(2)Hex(10-12)NeuAc(0)Fuc(0);  
-`(Hybrid/A1)//(Hybrid/A1)`: HexNAc(3)Hex(>=3)NeuAc(x)Fuc(x);  
-`Complex//(A2/A1B)`: HexNAc(4)Hex(>=3)NeuAc(x)Fuc(x);  
-`Complex//(A3/A2B)`: HexNAc(5)Hex(>=3)NeuAc(x)Fuc(x);  
-`Complex//(A4/A3B)`: HexNAc(>=6)Hex(>=3)NeuAc(x)Fuc(x),  
+*`Paucimannose//Paucimannose`: HexNAc(2)Hex(1-4)NeuAc(0)Fuc(x);  
+*`High-mannose//High-mannose`: HexNAc(2)Hex(5-9)NeuAc(0)Fuc(0);  
+*`Initiation//Initiation`: HexNAc(2)Hex(10-12)NeuAc(0)Fuc(0);  
+*`(Hybrid/A1)//(Hybrid/A1)`: HexNAc(3)Hex(>=3)NeuAc(x)Fuc(x);  
+*`Complex//(A2/A1B)`: HexNAc(4)Hex(>=3)NeuAc(x)Fuc(x);  
+*`Complex//(A3/A2B)`: HexNAc(5)Hex(>=3)NeuAc(x)Fuc(x);  
+*`Complex//(A4/A3B)`: HexNAc(>=6)Hex(>=3)NeuAc(x)Fuc(x),  
 where `x` is any amount; HexNAc = `N`, Hex = `H`, NeuAc = `A`, Fuc = `F`.  
 Other compositions are marked as `Other`.
 
