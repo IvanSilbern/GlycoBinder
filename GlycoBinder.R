@@ -1348,7 +1348,7 @@ local({
     mgf <- mgf[!duplicated(mgf$scan_number)] 
     #mgf <- mgf[scan_number %in% unique(res[RawName == raw_file_names[i]]$Scan)]
     
-    ion_match(marker_ions, mgf, 2, "ppm")
+    ion_match(marker_ions, mgf, 0.02, "Th")
     
   })
   
