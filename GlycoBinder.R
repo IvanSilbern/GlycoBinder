@@ -694,6 +694,90 @@ defineGlycoType <- function(df){
   
 }
 
+# Define Glycotope for "complex" or "hybrid" glycan types
+defineGlycoTope <- function(df, limit_intensity = 0.1){
+  
+  if(!all(c("NeuAc_H2O_274",
+            "NeuAc_292",
+            "NeuAc_Hex_454",
+            "NeuAc_HexNAc_495",
+            "Hex_HexNAc_Fuc_512",
+            "NeuAc_NeuAc_583",
+            "NeuAc_Hex_HexNAc_657",
+            "Hex_HexNAc_2Fuc_658",
+            "NeuAc_Hex_HexNAc_Fuc_803",
+            "2NeuAc_Hex_HexNAc_948",
+            "3NeuAc_Hex_NexNAc_1239") %in% names(df))){
+    
+    message("Skip Glycotope checking")
+    df[, Glyctope := NA]
+    return(df)
+    
+    }
+  
+  
+  df[, Glycotope1 := NA_character_]
+  df[, Glycotope2 := NA_character_]
+  df[GlycanType %in% c("Complex", "Hybrid/A1") &
+       NeuAc_Hex_HexNAc_Fuc_803 > limit_intensity &
+       (NeuAc_H2O_274 > limit_intensity | NeuAc_292 > limit_intensity),
+     Glycotope1 := "A-H-N(-F)"]
+  df[GlycanType %in% c("Complex", "Hybrid/A1") &
+       NeuAc_Hex_HexNAc_Fuc_803 < limit_intensity &
+       Hex_HexNAc_2Fuc_658 > limit_intensity,
+     Glycotope1 := "H(-F)-N(-F)"]
+  df[GlycanType %in% c("Complex", "Hybrid/A1") &
+       NeuAc_Hex_HexNAc_Fuc_803 < limit_intensity &
+       Hex_HexNAc_2Fuc_658 < limit_intensity &
+       Hex_HexNAc_Fuc_512 > limit_intensity,
+     Glycotope1 := "H-N(-F)"]
+  df[!is.na(Glycotope1) &
+       (NeuAc_H2O_274 > limit_intensity | NeuAc_292 > limit_intensity) &
+       `3NeuAc_Hex_NexNAc_1239` > limit_intensity,
+       Glycotope2 := "A-A-A-H-N or A-A-H-N(-A)"]
+  df[Glycotope2 == "A-A-A-H-N or A-A-H-N(-A)" &
+       NeuAc_HexNAc_495 > limit_intensity,
+     Glycotope2 := "A-A-H-N(-A)"]
+  df[!is.na(Glycotope1) &
+       (NeuAc_H2O_274 > limit_intensity | NeuAc_292 > limit_intensity) &
+       `3NeuAc_Hex_NexNAc_1239` < limit_intensity &
+       `2NeuAc_Hex_HexNAc_948` > limit_intensity,
+     Glycotope2 := "A-H-N(-A) or A-A-H-N"]
+  df[Glycotope2 == "A-H-N(-A) or A-A-H-N" &
+       NeuAc_HexNAc_495 > limit_intensity &
+       NeuAc_NeuAc_583 < limit_intensity,
+     Glycotope2 := "A-H-N(-A)"]
+  df[Glycotope2 == "A-H-N(-A) or A-A-H-N" &
+       NeuAc_HexNAc_495 < limit_intensity &
+       NeuAc_NeuAc_583 > limit_intensity,
+     Glycotope2 := "A-A-H-N"]
+  df[!is.na(Glycotope1) &
+       (NeuAc_H2O_274 > limit_intensity | NeuAc_292 > limit_intensity) &
+       `3NeuAc_Hex_NexNAc_1239` < limit_intensity &
+       `2NeuAc_Hex_HexNAc_948` < limit_intensity &
+       NeuAc_Hex_HexNAc_657 > limit_intensity,
+     Glycotope2 := "A-H-N or H-N(-A)"]
+  df[Glycotope2 == "A-H-N or H-N(-A)" &
+       NeuAc_HexNAc_495 > limit_intensity &
+       NeuAc_Hex_454 < limit_intensity,
+     Glycotope2 := "H-N(-A)"]
+  df[Glycotope2 == "A-H-N or H-N(-A)" &
+       NeuAc_HexNAc_495 < limit_intensity &
+       NeuAc_Hex_454 > limit_intensity,
+     Glycotope2 := "A-H-N"]
+  
+  df[, Glycotope := Glycotope1]
+  df[!is.na(Glycotope1) & !is.na(Glycotope2), Glycotope := paste0(Glycotope1, " & ", Glycotope2)]
+  
+  df <- df[, .SD, .SDcols = c(names(df)[1:which(names(df) == "GlycanAntennaType")],
+                              "Glycotope", "Glycotope1", "Glycotope2",
+                              setdiff(names(df)[(which(names(df) == "GlycanAntennaType")+1):length(df)], c("Glycotope", "Glycotope1", "Glycotope2"))
+  )]
+  
+  return(df[, -c("Glycotope1", "Glycotope2")])
+  
+  }
+
 ##### define some variables #####
 
 raw_file_extension      <- "raw"
@@ -804,8 +888,17 @@ marker_ions <- c("Mass;Marker;Formula
                   292.103;NeuAc;C11H17O8N1
                   308.098;NeuGc;C11H17O9N1
                   366.140;Hex_HexNAc;C14H23O10N1
-                  657.140;Hex_HexNAc_NeuAc;C25H40O18N2
-                  673.230;Hex_HexNAc_NeuGc;C25H40O19N2")
+                  454.156;NeuAc_Hex;;
+                  495.182;NeuAc_HexNAc;;
+                  512.197;Hex_HexNAc_Fuc;;
+                  583.198;NeuAc_NeuAc;;
+                  657.235;NeuAc_Hex_HexNAc;C25H40O18N2;
+                  673.230;Hex_HexNAc_NeuGc;C25H40O19N2
+                  658.255;Hex_HexNAc_2Fuc;;
+                  803.293;NeuAc_Hex_HexNAc_Fuc;;
+                  948.330;2NeuAc_Hex_HexNAc;;
+                  1239.426;3NeuAc_Hex_NexNAc;;
+                 ")
 
 # variables that will be set through arguments
 verbose                   <- TRUE   # verbosity
@@ -1834,9 +1927,18 @@ if(!file.exists("pglyco_output/pglyco_quant_results.txt")) stop("Cannot find com
 local({
   
   df <- fread("pglyco_output/pglyco_quant_results.txt", sep = "\t")
-  fwrite(defineGlycoType(df), "pglyco_output/pglyco_quant_results.txt", sep = "\t")
+  fwrite(defineGlycoTope(df = defineGlycoType(df)), "pglyco_output/pglyco_quant_results.txt", sep = "\t")
   
   })
+
+##### define Glycotopes
+if(!file.exists("pglyco_output/pglyco_quant_results.txt")) stop("Cannot find combined result file from pGlyco and RawTools output")
+local({
+  
+  df <- fread("pglyco_output/pglyco_quant_results.txt", sep = "\t")
+  fwrite(defineGlycoTope(df), "pglyco_output/pglyco_quant_results.txt", sep = "\t")
+  
+})
 
 ##### Combine reporter ion intensities of each Glycoform on a particular site #####
 
@@ -1870,7 +1972,7 @@ local({
     }
   # combine intensities for modified peptides
   modpept_int_sum        <- df_scans[, lapply(.SD, sum), by = .(Peptide, GlySite, `Glycan(H,N,A,G,F)`), .SDcols = c(int_names, mion_names)]
-  modpept_precursor_data <- df_scans[, lapply(.SD, paste, collapse = pglyco_separator), by = .(Peptide, GlySite, `Glycan(H,N,A,G,F)`), .SDcols = c("id", "RawName", "Scan", "PrecursorMZ", "Charge", "Mod", "ParentPeakArea")]
+  modpept_precursor_data <- df_scans[, lapply(.SD, paste, collapse = pglyco_separator), by = .(Peptide, GlySite, `Glycan(H,N,A,G,F)`), .SDcols = c("id", "RawName", "Scan", "PrecursorMZ", "Charge", "Mod", "ParentPeakArea", "Glycotope")]
   modpept_glycan_data    <- df_scans[, head(.SD, 1), by = .(Peptide, GlySite, `Glycan(H,N,A,G,F)`), .SDcols = c("GlyID", "PlausibleStruct", "GlycanType", "GlycanAntennaType", "GlyFrag", "GlyMass", "Proteins", "ProSite", "Unique_site")]
   
   df_modpept <- cbind(modpept_precursor_data,
@@ -2094,7 +2196,7 @@ local({
   # glycoform = distinct sequence window + specific Glycan structure
   # distinct from df_modpept, because peptides containing missed cleavage sites will be combined 
   
-  df_glycof_data  <- df_modpept[, lapply(.SD, paste, collapse = ";"), by = .(seq_wind, `Glycan(H,N,A,G,F)`), .SDcols = c("id", "Scan", "pGlyco_ids", "Peptide", "GlySite", "GlyID")]
+  df_glycof_data  <- df_modpept[, lapply(.SD, paste, collapse = ";"), by = .(seq_wind, `Glycan(H,N,A,G,F)`), .SDcols = c("id", "Scan", "pGlyco_ids", "Peptide", "GlySite", "GlyID", "Glycotope")]
   df_glycof_data2 <- df_modpept[, head(.SD, 1),                       by = .(seq_wind, `Glycan(H,N,A,G,F)`), .SDcols = c("GlycanType", "GlycanAntennaType", "GlyMass", "Proteins", "ProSites", "Leading_Protein", "Leading_ProSite")]
   df_glycof_int   <- df_modpept[, lapply(.SD, sum, na.rm = TRUE),     by = .(seq_wind, `Glycan(H,N,A,G,F)`), .SDcols = c(int_names, mion_names)]
   
@@ -2109,7 +2211,7 @@ local({
               "df_glycof_int"))
   
   # combine intensities for glycosites
-  df_gsite_data  <- df_modpept[, lapply(.SD, paste, collapse = ";"), by = .(seq_wind), .SDcols = c("id", "Scan", "pGlyco_ids", "Peptide", "GlySite", "GlyID", "Glycan(H,N,A,G,F)", "GlycanType", "GlycanAntennaType", "GlyMass")]
+  df_gsite_data  <- df_modpept[, lapply(.SD, paste, collapse = ";"), by = .(seq_wind), .SDcols = c("id", "Scan", "pGlyco_ids", "Peptide", "GlySite", "GlyID", "Glycan(H,N,A,G,F)", "GlycanType", "GlycanAntennaType", "Glycotope", "GlyMass")]
   df_gsite_data2 <- df_modpept[, head(.SD, 1),                       by = .(seq_wind), .SDcols = c("Proteins", "ProSites", "Leading_Protein", "Leading_ProSite")]
   df_gsite_int   <- df_modpept[, lapply(.SD, sum, na.rm = TRUE),     by = .(seq_wind), .SDcols = c(int_names, mion_names)]
   
@@ -2142,7 +2244,8 @@ local({
                                             "pGlyco_ids",
                                             "Scan",
                                             "Leading_Protein",
-                                            "Leading_ProSite")]
+                                            "Leading_ProSite",
+                                            "Glycotope")]
   
   df_glycan_data2 <- df_modpept[, head(.SD, 1), 
                                 by = .(`Glycan(H,N,A,G,F)`),
@@ -2166,20 +2269,45 @@ local({
               "df_glycan_data2",
               "df_glycan_int"))
   
+  # combine intensities for glycotopes
+  df_glycotope_data  <- df_scans[, lapply(.SD, paste, collapse = ";"),
+                                 by = .(Glycotope),
+                                .SDcols = c("id",
+                                            "Scan",
+                                            "Proteins",
+                                            "Glycan(H,N,A,G,F)",
+                                            "GlycanType",
+                                            "GlycanAntennaType",
+                                            "GlyID",
+                                            "GlyMass")]
+
+  df_glycotope_int   <- df_scans[, lapply(.SD, sum, na.rm = TRUE),
+                                by = .(Glycotope),
+                                .SDcols = c(int_names, mion_names)]
+  df_glycotope <- cbind(df_glycotope_data,
+                        df_glycotope_int  [, -c("Glycotope")])
+  df_glycotope <- df_glycotope[!is.na(Glycotope) & Glycotope != ""]
+  names(df_glycotope)[names(df_glycotope) == "id"] <- "pGlyco_ids"
+  df_glycotope[, id := 1:.N]
+  
+  rm(list = c("df_glycotope_data",
+              "df_glycotope_int"))
+  
   dat <- list(
     
     scans   = df_scans,
     modpept = df_modpept,
     sites   = df_gsite,
     gforms  = df_glycof,
-    glycans = df_glycan
+    glycans = df_glycan,
+    glycotopes = df_glycotope
     
   )
   
   ##### check fucosylation #####
   use_tables <- c("sites", "gforms", "glycans")
   for(i in use_tables){
-    
+
     dat[[i]] <- add_corefuc(dat[[i]], df_scans)
     dat[[i]] <- check_f_struct(dat[[i]], df_scans)
     dat[[i]] <- check_core_fucose(dat[[i]], df_scans)
@@ -2188,17 +2316,19 @@ local({
   
   ##### Add parent peak area #####
   scans <- df_scans[ParentPeakFound == TRUE] 
-  use_tables <- c("modpept", "sites", "gforms", "glycans")
+  use_tables <- c("modpept", "sites", "gforms", "glycans", "glycotopes")
   for(i in use_tables){
     
+    if(nrow(dat[[i]]) == 0) next
     dat[[i]] <- addPeakArea(df = dat[[i]], scans = scans, FUN = parent_area_fun)
     
   }
   
   # convert reporter ion intensities into %
-  use_tables <- c("scans", "modpept", "sites", "gforms", "glycans")
+  use_tables <- c("scans", "modpept", "sites", "gforms", "glycans", "glycotopes")
   for(i in use_tables){
   
+    if(nrow(dat[[i]]) == 0) next
     dat[[i]] <- percentIntensity(dat[[i]], int_names = int_names)
   
   }
@@ -2210,7 +2340,7 @@ local({
   fwrite(dat[["sites"]],   "pglyco_output\\pGlyco_glycosites.txt", sep = "\t")
   fwrite(dat[["gforms"]],  "pglyco_output\\pGlyco_glycoforms.txt", sep = "\t")
   fwrite(dat[["glycans"]], "pglyco_output\\pGlyco_glycans.txt", sep = "\t")
-  
+  fwrite(dat[["glycotopes"]], "pglyco_output\\pGlyco_glycotopes.txt", sep = "\t")
   
   if(verbose) proc.time() - ptm_transform_out
 
