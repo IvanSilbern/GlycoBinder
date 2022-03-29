@@ -715,56 +715,55 @@ defineGlycoTope <- function(df, limit_intensity = 0.1){
     
     }
   
-  
   df[, Glycotope1 := NA_character_]
   df[, Glycotope2 := NA_character_]
   df[GlycanType %in% c("Complex", "Hybrid/A1") &
        NeuAc_Hex_HexNAc_Fuc_803 > limit_intensity &
        (NeuAc_H2O_274 > limit_intensity | NeuAc_292 > limit_intensity),
-     Glycotope1 := "A-H-N(-F)"]
+     Glycotope1 := "AHN(F)"]
   df[GlycanType %in% c("Complex", "Hybrid/A1") &
        NeuAc_Hex_HexNAc_Fuc_803 < limit_intensity &
        Hex_HexNAc_2Fuc_658 > limit_intensity,
-     Glycotope1 := "H(-F)-N(-F)"]
+     Glycotope1 := "H(F)N(F)"]
   df[GlycanType %in% c("Complex", "Hybrid/A1") &
        NeuAc_Hex_HexNAc_Fuc_803 < limit_intensity &
        Hex_HexNAc_2Fuc_658 < limit_intensity &
        Hex_HexNAc_Fuc_512 > limit_intensity,
-     Glycotope1 := "H-N(-F)"]
+     Glycotope1 := "HN(F)"]
   df[!is.na(Glycotope1) &
        (NeuAc_H2O_274 > limit_intensity | NeuAc_292 > limit_intensity) &
        `3NeuAc_Hex_NexNAc_1239` > limit_intensity,
-       Glycotope2 := "A-A-A-H-N or A-A-H-N(-A)"]
-  df[Glycotope2 == "A-A-A-H-N or A-A-H-N(-A)" &
+       Glycotope2 := "AAAHN or AAHN(A)"]
+  df[Glycotope2 == "AAAHNorAAHN(A)" &
        NeuAc_HexNAc_495 > limit_intensity,
-     Glycotope2 := "A-A-H-N(-A)"]
+     Glycotope2 := "AAHN(A)"]
   df[!is.na(Glycotope1) &
        (NeuAc_H2O_274 > limit_intensity | NeuAc_292 > limit_intensity) &
        `3NeuAc_Hex_NexNAc_1239` < limit_intensity &
        `2NeuAc_Hex_HexNAc_948` > limit_intensity,
-     Glycotope2 := "A-H-N(-A) or A-A-H-N"]
-  df[Glycotope2 == "A-H-N(-A) or A-A-H-N" &
+     Glycotope2 := "AHN(A)orAAHN"]
+  df[Glycotope2 == "AHN(A)orAAHN" &
        NeuAc_HexNAc_495 > limit_intensity &
        NeuAc_NeuAc_583 < limit_intensity,
-     Glycotope2 := "A-H-N(-A)"]
-  df[Glycotope2 == "A-H-N(-A) or A-A-H-N" &
+     Glycotope2 := "AHN(A)"]
+  df[Glycotope2 == "AHN(A)orAAHN" &
        NeuAc_HexNAc_495 < limit_intensity &
        NeuAc_NeuAc_583 > limit_intensity,
-     Glycotope2 := "A-A-H-N"]
+     Glycotope2 := "AAHN"]
   df[!is.na(Glycotope1) &
        (NeuAc_H2O_274 > limit_intensity | NeuAc_292 > limit_intensity) &
        `3NeuAc_Hex_NexNAc_1239` < limit_intensity &
        `2NeuAc_Hex_HexNAc_948` < limit_intensity &
        NeuAc_Hex_HexNAc_657 > limit_intensity,
-     Glycotope2 := "A-H-N or H-N(-A)"]
-  df[Glycotope2 == "A-H-N or H-N(-A)" &
+     Glycotope2 := "AHNorHN(A)"]
+  df[Glycotope2 == "AHNorHN(A)" &
        NeuAc_HexNAc_495 > limit_intensity &
        NeuAc_Hex_454 < limit_intensity,
-     Glycotope2 := "H-N(-A)"]
-  df[Glycotope2 == "A-H-N or H-N(-A)" &
+     Glycotope2 := "HN(A)"]
+  df[Glycotope2 == "AHNorHN(A)" &
        NeuAc_HexNAc_495 < limit_intensity &
        NeuAc_Hex_454 > limit_intensity,
-     Glycotope2 := "A-H-N"]
+     Glycotope2 := "AHN"]
   
   df[, Glycotope := Glycotope1]
   df[!is.na(Glycotope1) & !is.na(Glycotope2), Glycotope := paste0(Glycotope1, " & ", Glycotope2)]
