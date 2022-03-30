@@ -2253,12 +2253,22 @@ local({
   # glycoform = distinct sequence window + specific Glycan structure
   # distinct from df_modpept, because peptides containing missed cleavage sites will be combined 
   
-  df_glycof_data  <- df_modpept[, lapply(.SD, paste, collapse = ";"), by = .(seq_wind, `Glycan(H,N,A,G,F)`), .SDcols = c("id", "Scan", "pGlyco_ids", "Peptide", "GlySite", "GlyID", "Glycotope")]
-  df_glycof_data2 <- df_modpept[, head(.SD, 1),                       by = .(seq_wind, `Glycan(H,N,A,G,F)`), .SDcols = c("GlycanType", "GlycanAntennaType", "GlyMass", "Proteins", "ProSites", "Leading_Protein", "Leading_ProSite")]
+  df_glycof_data  <- df_modpept[, lapply(.SD, paste, collapse = ";"), by = .(seq_wind, `Glycan(H,N,A,G,F)`), .SDcols = c("id", "Scan", "pGlyco_ids", "Peptide", "GlySite", "GlyID")]
+  df_glycof_data2 <- df_modpept[, lapply(.SD, function(x) {
+    
+    glycotopes <- unlist(stringr::str_split(x, "[/;&]"))
+    glycotopes <- gsub(" ", "", glycotopes)
+    glycotopes <- glycotopes[!is.na(glycotopes) & glycotopes != ""]
+    glycotopes <- unique(glycotopes)
+    return(paste(glycotopes, collapse = ";"))
+    
+    }), by = .(seq_wind, `Glycan(H,N,A,G,F)`), .SDcols = c("Glycotope")]
+  df_glycof_data3 <- df_modpept[, head(.SD, 1),                       by = .(seq_wind, `Glycan(H,N,A,G,F)`), .SDcols = c("GlycanType", "GlycanAntennaType", "GlyMass", "Proteins", "ProSites", "Leading_Protein", "Leading_ProSite")]
   df_glycof_int   <- df_modpept[, lapply(.SD, sum, na.rm = TRUE),     by = .(seq_wind, `Glycan(H,N,A,G,F)`), .SDcols = c(int_names, mion_names)]
   
   df_glycof <- cbind(df_glycof_data,
                      df_glycof_data2[, -c("seq_wind", "Glycan(H,N,A,G,F)")],
+                     df_glycof_data3[, -c("seq_wind", "Glycan(H,N,A,G,F)")],
                      df_glycof_int[,   -c("seq_wind", "Glycan(H,N,A,G,F)")])
   names(df_glycof)[names(df_glycof) == "id"] <- "modpept_ids"
   df_glycof[, id := 1:df_glycof[, .N]]
@@ -2269,12 +2279,22 @@ local({
               "df_glycof_int"))
   
   # combine intensities for glycosites
-  df_gsite_data  <- df_modpept[, lapply(.SD, paste, collapse = ";"), by = .(seq_wind), .SDcols = c("id", "Scan", "pGlyco_ids", "Peptide", "GlySite", "GlyID", "Glycan(H,N,A,G,F)", "GlycanType", "GlycanAntennaType", "Glycotope", "GlyMass")]
-  df_gsite_data2 <- df_modpept[, head(.SD, 1),                       by = .(seq_wind), .SDcols = c("Proteins", "ProSites", "Leading_Protein", "Leading_ProSite")]
+  df_gsite_data  <- df_modpept[, lapply(.SD, paste, collapse = ";"), by = .(seq_wind), .SDcols = c("id", "Scan", "pGlyco_ids", "Peptide", "GlySite", "GlyID", "Glycan(H,N,A,G,F)", "GlycanType", "GlycanAntennaType", "GlyMass")]
+  df_gsite_data2 <- df_modpept[, lapply(.SD, function(x) {
+    
+    glycotopes <- unlist(stringr::str_split(x, "[/;&]"))
+    glycotopes <- gsub(" ", "", glycotopes)
+    glycotopes <- glycotopes[!is.na(glycotopes) & glycotopes != ""]
+    glycotopes <- unique(glycotopes)
+    return(paste(glycotopes, collapse = ";"))
+    
+  }), by = .(seq_wind), .SDcols = c("Glycotope")]
+  df_gsite_data3 <- df_modpept[, head(.SD, 1),                       by = .(seq_wind), .SDcols = c("Proteins", "ProSites", "Leading_Protein", "Leading_ProSite")]
   df_gsite_int   <- df_modpept[, lapply(.SD, sum, na.rm = TRUE),     by = .(seq_wind), .SDcols = c(int_names, mion_names)]
   
   df_gsite <- cbind(df_gsite_data,
                     df_gsite_data2[, -c("seq_wind")],
+                    df_gsite_data3[, -c("seq_wind")],
                     df_gsite_int[, -c("seq_wind")])
   names(df_gsite)[names(df_gsite) == "id"] <- "modpept_ids"
   df_gsite[, id := 1:df_gsite[, .N]]
@@ -2303,10 +2323,19 @@ local({
                                             "pGlyco_ids",
                                             "Scan",
                                             "Leading_Protein",
-                                            "Leading_ProSite",
-                                            "Glycotope")]
+                                            "Leading_ProSite")]
   
-  df_glycan_data2 <- df_modpept[, head(.SD, 1), 
+  df_glycan_data2 <- df_modpept[, lapply(.SD, function(x) {
+    
+    glycotopes <- unlist(stringr::str_split(x, "[/;&]"))
+    glycotopes <- gsub(" ", "", glycotopes)
+    glycotopes <- glycotopes[!is.na(glycotopes) & glycotopes != ""]
+    glycotopes <- unique(glycotopes)
+    return(paste(glycotopes, collapse = ";"))
+    
+  }), by = .(`Glycan(H,N,A,G,F)`), .SDcols = c("Glycotope")]
+  
+  df_glycan_data3 <- df_modpept[, head(.SD, 1), 
                                 by = .(`Glycan(H,N,A,G,F)`),
                                 .SDcols = c("GlyID",
                                             "GlycanType",
@@ -2320,6 +2349,7 @@ local({
                                 .SDcols = c(int_names, mion_names)]
   df_glycan <- cbind(df_glycan_data,
                      df_glycan_data2[, -c("Glycan(H,N,A,G,F)")],
+                     df_glycan_data3[, -c("Glycan(H,N,A,G,F)")],
                      df_glycan_int  [, -c("Glycan(H,N,A,G,F)")])
   names(df_glycan)[names(df_glycan) == "id"] <- "modpept_ids"
   df_glycan$id <- 1:df_glycan[, .N]
