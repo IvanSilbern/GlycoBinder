@@ -775,6 +775,45 @@ defineGlycoTope <- function(df, limit_intensity = 0.1){
   
   return(df[, -c("Glycotope1", "Glycotope2")])
   
+}
+
+#check for glycotope conflict
+glycotopeConflict <- function(df){
+  
+  df[, composition := stringr::str_split(`Glycan(H,N,A,G,F)`, " ")]
+  df[, n_neuac := as.integer(unlist(lapply(composition, "[", 3)))]
+  df[, n_fuc   := as.integer(unlist(lapply(composition, "[", 5)))]
+  df[, Glycotope1 := unlist(lapply(stringr::str_split(Glycotope, " & "), "[", 1))]
+  df[, Glycotope2 := unlist(lapply(stringr::str_split(Glycotope, " & "), "[", 2))]
+  
+  df[, glycotope_unmatched := NA_character_]
+  df[Glycotope1 %in% c("HN(F)", "AHN(F)") &
+       !(CoreFuc %in% c(11, 12)) &
+       n_fuc < 1, glycotope_unmatched := "+"]
+  df[Glycotope1 %in% c("H(F)N(F)") &
+       !(CoreFuc %in% c(11, 12)) &
+       n_fuc < 2, glycotope_unmatched := "+"]
+  df[Glycotope1 %in% c("HN(F)", "AHN(F)") &
+       CoreFuc %in% c(11, 12) &
+       n_fuc < 2, glycotope_unmatched := "+"]
+  df[Glycotope1 %in% c("H(F)N(F)") &
+       CoreFuc %in% c(11, 12) &
+       n_fuc < 3, glycotope_unmatched := "+"]
+  df[grepl("A", Glycotope) &
+     n_neuac < 1, glycotope_unmatched := "+"]
+  df[Glycotope2 %in% c("AHN(A)", "AAHN", "AHN(A)orAAHN") &
+       n_neuac < 2, glycotope_unmatched := "+"]
+  df[Glycotope2 %in% c("AAHN(A)", "AAAHN", "AAAHNorAAHN(A)") &
+       n_neuac < 3, glycotope_unmatched := "+"]
+  
+  df <- df[, -c("Glycotope1", "Glycotope2", "composition", "n_neuac", "n_fuc")]
+  df <- df[, .SD, .SDcols = c(names(df)[1:which(names(df) == "Glycotope")],
+                              "glycotope_unmatched",
+                              setdiff(names(df)[(which(names(df) == "Glycotope")+1):length(df)], c("glycotope_unmatched"))
+  )]
+  
+  return(df)
+  
   }
 
 ##### define some variables #####
@@ -898,6 +937,10 @@ marker_ions <- c("Mass;Marker;Formula
                   948.330;2NeuAc_Hex_HexNAc;;
                   1239.426;3NeuAc_Hex_NexNAc;;
                  ")
+
+# base glycotope types
+base_glycotopes <- c("HN(F)", "AHN", "HN(A)", "H(F)N(F)", "AHN(F)", "AHN(A)", "AAHN", "AAHN(A)", "AAAHN",
+                     "AHNorHN(A)", "AHN(A)orAAHN", "AAAHNorAAHN(A)")
 
 # variables that will be set through arguments
 verbose                   <- TRUE   # verbosity
@@ -1922,20 +1965,35 @@ local({
 })
 
 ##### define Glycan/Glycan Antenna types
+# if(!file.exists("pglyco_output/pglyco_quant_results.txt")) stop("Cannot find combined result file from pGlyco and RawTools output")
+# local({
+#   
+#   df <- fread("pglyco_output/pglyco_quant_results.txt", sep = "\t")
+#   fwrite(defineGlycoTope(df = defineGlycoType(df)), "pglyco_output/pglyco_quant_results.txt", sep = "\t")
+#   
+#   })
+
 if(!file.exists("pglyco_output/pglyco_quant_results.txt")) stop("Cannot find combined result file from pGlyco and RawTools output")
 local({
-  
+
   df <- fread("pglyco_output/pglyco_quant_results.txt", sep = "\t")
-  fwrite(defineGlycoTope(df = defineGlycoType(df)), "pglyco_output/pglyco_quant_results.txt", sep = "\t")
-  
-  })
+  fwrite(defineGlycoType(df), "pglyco_output/pglyco_quant_results.txt", sep = "\t")
+
+})
 
 ##### define Glycotopes
-if(!file.exists("pglyco_output/pglyco_quant_results.txt")) stop("Cannot find combined result file from pGlyco and RawTools output")
+local({
+
+  df <- fread("pglyco_output/pglyco_quant_results.txt", sep = "\t")
+  fwrite(defineGlycoTope(df), "pglyco_output/pglyco_quant_results.txt", sep = "\t")
+
+})
+
+# check for Glycotope conflicts
 local({
   
   df <- fread("pglyco_output/pglyco_quant_results.txt", sep = "\t")
-  fwrite(defineGlycoTope(df), "pglyco_output/pglyco_quant_results.txt", sep = "\t")
+  fwrite(glycotopeConflict(df), "pglyco_output/pglyco_quant_results.txt", sep = "\t")
   
 })
 
@@ -2204,6 +2262,7 @@ local({
                      df_glycof_int[,   -c("seq_wind", "Glycan(H,N,A,G,F)")])
   names(df_glycof)[names(df_glycof) == "id"] <- "modpept_ids"
   df_glycof[, id := 1:df_glycof[, .N]]
+  df_glycof <- df_glycof[, .SD, .SDcols = c("id", names(df_glycof)[names(df_glycof) != "id"])]
   
   rm(list = c("df_glycof_data",
               "df_glycof_data2",
@@ -2219,6 +2278,7 @@ local({
                     df_gsite_int[, -c("seq_wind")])
   names(df_gsite)[names(df_gsite) == "id"] <- "modpept_ids"
   df_gsite[, id := 1:df_gsite[, .N]]
+  df_gsite <- df_gsite[, .SD, .SDcols = c("id", names(df_gsite)[names(df_gsite) != "id"])]
   
   # make a combined column of proteins and sites:
   df_gsite[, Protein_Site := lapply(Map(function(x, y){
@@ -2263,13 +2323,20 @@ local({
                      df_glycan_int  [, -c("Glycan(H,N,A,G,F)")])
   names(df_glycan)[names(df_glycan) == "id"] <- "modpept_ids"
   df_glycan$id <- 1:df_glycan[, .N]
+  df_glycan <- df_glycan[, .SD, .SDcols = c("id", names(df_glycan)[names(df_glycan) != "id"])]
   
   rm(list = c("df_glycan_data",
               "df_glycan_data2",
               "df_glycan_int"))
   
   # combine intensities for glycotopes
-  df_glycotope_data  <- df_scans[, lapply(.SD, paste, collapse = ";"),
+  temp <- df_scans[, list(Glycotope = unlist(stringr::str_split(Glycotope, "&"))), by = "id"]
+  temp[, Glycotope := gsub(" ", "", Glycotope)]
+  temp <- temp[!is.na(Glycotope) & Glycotope != ""]
+  temp <- merge(temp, df_scans[, -c("Glycotope")], by = "id", all.x = TRUE)
+  temp <- temp[glycotope_unmatched != "+"]
+
+  df_glycotope_data  <- temp[, lapply(.SD, paste, collapse = ";"),
                                  by = .(Glycotope),
                                 .SDcols = c("id",
                                             "Scan",
@@ -2280,14 +2347,22 @@ local({
                                             "GlyID",
                                             "GlyMass")]
 
-  df_glycotope_int   <- df_scans[, lapply(.SD, sum, na.rm = TRUE),
+  df_glycotope_int   <- temp[, lapply(.SD, sum, na.rm = TRUE),
                                 by = .(Glycotope),
                                 .SDcols = c(int_names, mion_names)]
   df_glycotope <- cbind(df_glycotope_data,
                         df_glycotope_int  [, -c("Glycotope")])
-  df_glycotope <- df_glycotope[!is.na(Glycotope) & Glycotope != ""]
+  
+  df_glycotope <- rbind(df_glycotope,
+                        data.table(Glycotope = base_glycotopes[!base_glycotopes %in% df_glycotope$Glycotope]),
+                        fill = TRUE)
+  df_glycotope[, Glycotope := factor(Glycotope, levels = ..base_glycotopes)]
+  df_glycotope <- df_glycotope[order(Glycotope)]
+  #df_glycotope <- df_glycotope[!is.na(Glycotope) & Glycotope != ""]
+  
   names(df_glycotope)[names(df_glycotope) == "id"] <- "pGlyco_ids"
   df_glycotope[, id := 1:.N]
+  df_glycotope <- df_glycotope[, .SD, .SDcols = c("id", names(df_glycotope)[names(df_glycotope) != "id"])]
   
   rm(list = c("df_glycotope_data",
               "df_glycotope_int"))
