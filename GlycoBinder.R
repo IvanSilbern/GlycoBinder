@@ -624,7 +624,7 @@ addPeakArea <- function(df, scans, FUN = "sum"){
     
     ppa <- scans[scans$id %in% x, c("RawName", "Peptide", "Glycan(H,N,A,G,F)",
                                     "PrecursorMZ", "PrecursorCharge", "ParentPeakArea")]
-    ppa[, ParentIonMass := signif(ParentIonMass, 5)]
+    ppa[, PrecursorMZ := signif(PrecursorMZ, 5)]
     ppa <- ppa[order(-ParentPeakArea)]
     ppa <- ppa[!duplicated(ppa[, -c("ParentPeakArea")])]$ParentPeakArea
     ParentPeakArea  <- eval(call(get("FUN"), ppa, na.rm = TRUE))
