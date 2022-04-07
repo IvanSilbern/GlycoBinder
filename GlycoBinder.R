@@ -710,70 +710,72 @@ defineGlycoTope <- function(df, limit_intensity = 0.1){
             "3NeuAc_Hex_NexNAc_1239") %in% names(df))){
     
     message("Skip Glycotope checking")
-    df[, Glyctope := NA]
+    df[, Glycotope_A := ""]
+    df[, Glycotope_F := ""]
     return(df)
     
     }
   
-  df[, Glycotope1 := NA_character_]
-  df[, Glycotope2 := NA_character_]
+  df[, Glycotope_F := ""]
+  df[, Glycotope_A := ""]
   df[GlycanType %in% c("Complex", "Hybrid/A1") &
        NeuAc_Hex_HexNAc_Fuc_803 > limit_intensity &
        (NeuAc_H2O_274 > limit_intensity | NeuAc_292 > limit_intensity),
-     Glycotope1 := "AHN(F)"]
+     Glycotope_F := "AHN(F)"]
   df[GlycanType %in% c("Complex", "Hybrid/A1") &
        NeuAc_Hex_HexNAc_Fuc_803 < limit_intensity &
        Hex_HexNAc_2Fuc_658 > limit_intensity,
-     Glycotope1 := "H(F)N(F)"]
+     Glycotope_F := "H(F)N(F)"]
   df[GlycanType %in% c("Complex", "Hybrid/A1") &
        NeuAc_Hex_HexNAc_Fuc_803 < limit_intensity &
        Hex_HexNAc_2Fuc_658 < limit_intensity &
        Hex_HexNAc_Fuc_512 > limit_intensity,
-     Glycotope1 := "HN(F)"]
-  df[!is.na(Glycotope1) &
+     Glycotope_F := "HN(F)"]
+  df[!is.na(Glycotope_F) &
        (NeuAc_H2O_274 > limit_intensity | NeuAc_292 > limit_intensity) &
        `3NeuAc_Hex_NexNAc_1239` > limit_intensity,
-       Glycotope2 := "AAAHN or AAHN(A)"]
-  df[Glycotope2 == "AAAHNorAAHN(A)" &
+       Glycotope_A := "AAAHN or AAHN(A)"]
+  df[Glycotope_A == "AAAHNorAAHN(A)" &
        NeuAc_HexNAc_495 > limit_intensity,
-     Glycotope2 := "AAHN(A)"]
-  df[!is.na(Glycotope1) &
+     Glycotope_A := "AAHN(A)"]
+  df[!is.na(Glycotope_F) &
        (NeuAc_H2O_274 > limit_intensity | NeuAc_292 > limit_intensity) &
        `3NeuAc_Hex_NexNAc_1239` < limit_intensity &
        `2NeuAc_Hex_HexNAc_948` > limit_intensity,
-     Glycotope2 := "AHN(A)orAAHN"]
-  df[Glycotope2 == "AHN(A)orAAHN" &
+     Glycotope_A := "AHN(A)orAAHN"]
+  df[Glycotope_A == "AHN(A)orAAHN" &
        NeuAc_HexNAc_495 > limit_intensity &
        NeuAc_NeuAc_583 < limit_intensity,
-     Glycotope2 := "AHN(A)"]
-  df[Glycotope2 == "AHN(A)orAAHN" &
+     Glycotope_A := "AHN(A)"]
+  df[Glycotope_A == "AHN(A)orAAHN" &
        NeuAc_HexNAc_495 < limit_intensity &
        NeuAc_NeuAc_583 > limit_intensity,
-     Glycotope2 := "AAHN"]
-  df[!is.na(Glycotope1) &
+     Glycotope_A := "AAHN"]
+  df[!is.na(Glycotope_F) &
        (NeuAc_H2O_274 > limit_intensity | NeuAc_292 > limit_intensity) &
        `3NeuAc_Hex_NexNAc_1239` < limit_intensity &
        `2NeuAc_Hex_HexNAc_948` < limit_intensity &
        NeuAc_Hex_HexNAc_657 > limit_intensity,
-     Glycotope2 := "AHNorHN(A)"]
-  df[Glycotope2 == "AHNorHN(A)" &
+     Glycotope_A := "AHNorHN(A)"]
+  df[Glycotope_A == "AHNorHN(A)" &
        NeuAc_HexNAc_495 > limit_intensity &
        NeuAc_Hex_454 < limit_intensity,
-     Glycotope2 := "HN(A)"]
-  df[Glycotope2 == "AHNorHN(A)" &
+     Glycotope_A := "HN(A)"]
+  df[Glycotope_A == "AHNorHN(A)" &
        NeuAc_HexNAc_495 < limit_intensity &
        NeuAc_Hex_454 > limit_intensity,
-     Glycotope2 := "AHN"]
+     Glycotope_A := "AHN"]
   
-  df[, Glycotope := Glycotope1]
-  df[!is.na(Glycotope1) & !is.na(Glycotope2), Glycotope := paste0(Glycotope1, " & ", Glycotope2)]
+  df[, Glycotope := Glycotope_F]
+  df[!is.na(Glycotope_F) & !is.na(Glycotope_A), Glycotope := paste0(Glycotope_F, " & ", Glycotope_A)]
   
   df <- df[, .SD, .SDcols = c(names(df)[1:which(names(df) == "GlycanAntennaType")],
-                              "Glycotope", "Glycotope1", "Glycotope2",
-                              setdiff(names(df)[(which(names(df) == "GlycanAntennaType")+1):length(df)], c("Glycotope", "Glycotope1", "Glycotope2"))
+                              "Glycotope", "Glycotope_F", "Glycotope_A",
+                              setdiff(names(df)[(which(names(df) == "GlycanAntennaType")+1):length(df)],
+                                      c("Glycotope", "Glycotope_F", "Glycotope_A"))
   )]
   
-  return(df[, -c("Glycotope1", "Glycotope2")])
+  return(df[, -c("Glycotope")])
   
 }
 
@@ -783,33 +785,37 @@ glycotopeConflict <- function(df){
   df[, composition := stringr::str_split(`Glycan(H,N,A,G,F)`, " ")]
   df[, n_neuac := as.integer(unlist(lapply(composition, "[", 3)))]
   df[, n_fuc   := as.integer(unlist(lapply(composition, "[", 5)))]
-  df[, Glycotope1 := unlist(lapply(stringr::str_split(Glycotope, " & "), "[", 1))]
-  df[, Glycotope2 := unlist(lapply(stringr::str_split(Glycotope, " & "), "[", 2))]
+  # df[, Glycotope_F := unlist(lapply(stringr::str_split(Glycotope, " & "), "[", 1))]
+  # df[, Glycotope_A := unlist(lapply(stringr::str_split(Glycotope, " & "), "[", 2))]
   
-  df[, glycotope_unmatched := NA_character_]
-  df[Glycotope1 %in% c("HN(F)", "AHN(F)") &
+  df[, Glycotope_F_unmatched := ""]
+  df[, Glycotope_A_unmatched := ""]
+  df[Glycotope_F %in% c("HN(F)", "AHN(F)") &
        !(CoreFuc %in% c(11, 12)) &
-       n_fuc < 1, glycotope_unmatched := "+"]
-  df[Glycotope1 %in% c("H(F)N(F)") &
+       n_fuc < 1, Glycotope_F_unmatched := "+"]
+  df[Glycotope_F %in% c("H(F)N(F)") &
        !(CoreFuc %in% c(11, 12)) &
-       n_fuc < 2, glycotope_unmatched := "+"]
-  df[Glycotope1 %in% c("HN(F)", "AHN(F)") &
+       n_fuc < 2, Glycotope_F_unmatched := "+"]
+  df[Glycotope_F %in% c("HN(F)", "AHN(F)") &
        CoreFuc %in% c(11, 12) &
-       n_fuc < 2, glycotope_unmatched := "+"]
-  df[Glycotope1 %in% c("H(F)N(F)") &
+       n_fuc < 2, Glycotope_F_unmatched := "+"]
+  df[Glycotope_F %in% c("H(F)N(F)") &
        CoreFuc %in% c(11, 12) &
-       n_fuc < 3, glycotope_unmatched := "+"]
-  df[grepl("A", Glycotope) &
-     n_neuac < 1, glycotope_unmatched := "+"]
-  df[Glycotope2 %in% c("AHN(A)", "AAHN", "AHN(A)orAAHN") &
-       n_neuac < 2, glycotope_unmatched := "+"]
-  df[Glycotope2 %in% c("AAHN(A)", "AAAHN", "AAAHNorAAHN(A)") &
-       n_neuac < 3, glycotope_unmatched := "+"]
+       n_fuc < 3, Glycotope_F_unmatched := "+"]
+  df[grepl("A", Glycotope_F) &
+       n_neuac < 1, Glycotope_F_unmatched := "+"]
+  df[grepl("A", Glycotope_A) &
+       n_neuac < 1, Glycotope_A_unmatched := "+"]
+  df[Glycotope_A %in% c("AHN(A)", "AAHN", "AHN(A)orAAHN") &
+       n_neuac < 2, Glycotope_A_unmatched := "+"]
+  df[Glycotope_A %in% c("AAHN(A)", "AAAHN", "AAAHNorAAHN(A)") &
+       n_neuac < 3, Glycotope_A_unmatched := "+"]
   
-  df <- df[, -c("Glycotope1", "Glycotope2", "composition", "n_neuac", "n_fuc")]
-  df <- df[, .SD, .SDcols = c(names(df)[1:which(names(df) == "Glycotope")],
-                              "glycotope_unmatched",
-                              setdiff(names(df)[(which(names(df) == "Glycotope")+1):length(df)], c("glycotope_unmatched"))
+  df <- df[, -c("composition", "n_neuac", "n_fuc")]
+  df <- df[, .SD, .SDcols = c(names(df)[1:which(names(df) == "Glycotope_A")],
+                              "Glycotope_F_unmatched", "Glycotope_A_unmatched",
+                              setdiff(names(df)[(which(names(df) == "Glycotope_A")+1):length(df)],
+                                      c("Glycotope_F_unmatched", "Glycotope_A_unmatched"))
   )]
   
   return(df)
@@ -2028,12 +2034,21 @@ local({
     
     }
   # combine intensities for modified peptides
-  modpept_int_sum        <- df_scans[, lapply(.SD, sum), by = .(Peptide, GlySite, `Glycan(H,N,A,G,F)`), .SDcols = c(int_names, mion_names)]
-  modpept_precursor_data <- df_scans[, lapply(.SD, paste, collapse = pglyco_separator), by = .(Peptide, GlySite, `Glycan(H,N,A,G,F)`), .SDcols = c("id", "RawName", "Scan", "PrecursorMZ", "Charge", "Mod", "ParentPeakArea", "Glycotope")]
-  modpept_glycan_data    <- df_scans[, head(.SD, 1), by = .(Peptide, GlySite, `Glycan(H,N,A,G,F)`), .SDcols = c("GlyID", "PlausibleStruct", "GlycanType", "GlycanAntennaType", "GlyFrag", "GlyMass", "Proteins", "ProSite", "Unique_site")]
+  modpept_int_sum        <- df_scans[, lapply(.SD, sum), by = .(Peptide, GlySite, `Glycan(H,N,A,G,F)`),
+                                     .SDcols = c(int_names, mion_names)]
+  modpept_precursor_data <- df_scans[, lapply(.SD, paste, collapse = pglyco_separator), by = .(Peptide, GlySite, `Glycan(H,N,A,G,F)`),
+                                     .SDcols = c("id", "RawName", "Scan", "PrecursorMZ", "Charge", "Mod", "ParentPeakArea")]
+  modpept_pept_data      <- df_scans[, head(.SD, 1), by = .(Peptide, GlySite, `Glycan(H,N,A,G,F)`),
+                                     .SDcols = c("Proteins", "ProSite", "Unique_site")]
+  modpept_glycan_data    <- df_scans[, head(.SD, 1), by = .(Peptide, GlySite, `Glycan(H,N,A,G,F)`),
+                                     .SDcols = c("GlyID", "PlausibleStruct", "GlycanType", "GlycanAntennaType", "GlyFrag", "GlyMass")]
+  modpept_glycan_data2   <- df_scans[, lapply(.SD, paste, collapse = pglyco_separator), by = .(Peptide, GlySite, `Glycan(H,N,A,G,F)`),
+                                     .SDcols = c("Glycotope_F", "Glycotope_A", "Glycotope_F_unmatched", "Glycotope_A_unmatched")]
   
   df_modpept <- cbind(modpept_precursor_data,
+                      modpept_pept_data[, -c("Peptide", "GlySite", "Glycan(H,N,A,G,F)")],
                       modpept_glycan_data[, -c("Peptide", "GlySite", "Glycan(H,N,A,G,F)")],
+                      modpept_glycan_data2[, -c("Peptide", "GlySite", "Glycan(H,N,A,G,F)")],
                       modpept_int_sum    [, -c("Peptide", "GlySite", "Glycan(H,N,A,G,F)")])
   
   # pGlyco_ids correspond to the row number of df_scans, df_modpept gets its own ids
@@ -2253,18 +2268,43 @@ local({
   # glycoform = distinct sequence window + specific Glycan structure
   # distinct from df_modpept, because peptides containing missed cleavage sites will be combined 
   
-  df_glycof_data  <- df_modpept[, lapply(.SD, paste, collapse = ";"), by = .(seq_wind, `Glycan(H,N,A,G,F)`), .SDcols = c("id", "Scan", "pGlyco_ids", "Peptide", "GlySite", "GlyID")]
-  df_glycof_data2 <- df_modpept[, lapply(.SD, function(x) {
+  df_glycof_data  <- df_modpept[, lapply(.SD, paste, collapse = ";"), by = .(seq_wind, `Glycan(H,N,A,G,F)`),
+                                .SDcols = c("id", "Scan", "pGlyco_ids", "Peptide", "GlySite", "GlyID")]
+  # df_glycof_data2 <- df_modpept[, lapply(.SD, function(x) {
+  #   
+  #   glycotopes <- unlist(stringr::str_split(x, "[/;&]"))
+  #   glycotopes <- gsub(" ", "", glycotopes)
+  #   glycotopes <- glycotopes[!is.na(glycotopes) & glycotopes != ""]
+  #   glycotopes <- unique(glycotopes)
+  #   return(paste(glycotopes, collapse = ";"))
+  #   
+  # }), by = .(seq_wind, `Glycan(H,N,A,G,F)`), .SDcols = c("Glycotope_F", "Glycotope_A")]
+  df_glycof_data2 <- df_modpept[, .(Glycotope = unlist(Map(function(gf, ga, unf, una){
     
-    glycotopes <- unlist(stringr::str_split(x, "[/;&]"))
-    glycotopes <- gsub(" ", "", glycotopes)
-    glycotopes <- glycotopes[!is.na(glycotopes) & glycotopes != ""]
+    gf <- unlist(stringr::str_split(gf, "[/;]"))
+    ga <- unlist(stringr::str_split(ga, "[/;]"))
+    unf <- unlist(stringr::str_split(unf, "[/;]"))
+    una <- unlist(stringr::str_split(una, "[/;]"))
+    
+    glycotopes <- gf[unf != "+"]
+    glycotopes <- c(glycotopes, ga[una != "+"])
     glycotopes <- unique(glycotopes)
+    glycotopes <- glycotopes[!is.na(glycotopes) & glycotopes != "" & glycotopes != "NA"]
+    
     return(paste(glycotopes, collapse = ";"))
     
-    }), by = .(seq_wind, `Glycan(H,N,A,G,F)`), .SDcols = c("Glycotope")]
+    }, gf = Glycotope_F, ga = Glycotope_A, unf = Glycotope_F_unmatched, una = Glycotope_A_unmatched))),
+    by = .(seq_wind, `Glycan(H,N,A,G,F)`)]
+  
+  df_glycof_data2 <- df_glycof_data2[!duplicated(df_glycof_data2[, c("seq_wind", "Glycan(H,N,A,G,F)")])]
   df_glycof_data3 <- df_modpept[, head(.SD, 1),                       by = .(seq_wind, `Glycan(H,N,A,G,F)`), .SDcols = c("GlycanType", "GlycanAntennaType", "GlyMass", "Proteins", "ProSites", "Leading_Protein", "Leading_ProSite")]
   df_glycof_int   <- df_modpept[, lapply(.SD, sum, na.rm = TRUE),     by = .(seq_wind, `Glycan(H,N,A,G,F)`), .SDcols = c(int_names, mion_names)]
+  
+  df_modpept[, .(Glycotope_F = paste(Glycotope_F, collapse = ";"),
+         Glycotope_A = paste(Glycotope_A, collapse = ";"),
+         Glycotope_F_unmatched = paste(Glycotope_F_unmatched, collapse = ";"),
+         Glycotope_A_unmatched = paste(Glycotope_A_unmatched, collapse = ";")),
+     by = .(seq_wind, `Glycan(H,N,A,G,F)`)]
   
   df_glycof <- cbind(df_glycof_data,
                      df_glycof_data2[, -c("seq_wind", "Glycan(H,N,A,G,F)")],
@@ -2280,15 +2320,24 @@ local({
   
   # combine intensities for glycosites
   df_gsite_data  <- df_modpept[, lapply(.SD, paste, collapse = ";"), by = .(seq_wind), .SDcols = c("id", "Scan", "pGlyco_ids", "Peptide", "GlySite", "GlyID", "Glycan(H,N,A,G,F)", "GlycanType", "GlycanAntennaType", "GlyMass")]
-  df_gsite_data2 <- df_modpept[, lapply(.SD, function(x) {
+  df_gsite_data2 <- df_modpept[, .(Glycotope = unlist(Map(function(gf, ga, unf, una){
     
-    glycotopes <- unlist(stringr::str_split(x, "[/;&]"))
-    glycotopes <- gsub(" ", "", glycotopes)
-    glycotopes <- glycotopes[!is.na(glycotopes) & glycotopes != ""]
+    gf <- unlist(stringr::str_split(gf, "[/;]"))
+    ga <- unlist(stringr::str_split(ga, "[/;]"))
+    unf <- unlist(stringr::str_split(unf, "[/;]"))
+    una <- unlist(stringr::str_split(una, "[/;]"))
+    
+    glycotopes <- gf[unf != "+"]
+    glycotopes <- c(glycotopes, ga[una != "+"])
+    glycotopes <- glycotopes[!is.na(glycotopes) & glycotopes != "" & glycotopes != "NA"]
     glycotopes <- unique(glycotopes)
+    
     return(paste(glycotopes, collapse = ";"))
     
-  }), by = .(seq_wind), .SDcols = c("Glycotope")]
+  }, gf = Glycotope_F, ga = Glycotope_A, unf = Glycotope_F_unmatched, una = Glycotope_A_unmatched))),
+  by = .(seq_wind)]
+  df_gsite_data2 <- df_gsite_data2[!duplicated(df_gsite_data2[, c("seq_wind")])]
+  
   df_gsite_data3 <- df_modpept[, head(.SD, 1),                       by = .(seq_wind), .SDcols = c("Proteins", "ProSites", "Leading_Protein", "Leading_ProSite")]
   df_gsite_int   <- df_modpept[, lapply(.SD, sum, na.rm = TRUE),     by = .(seq_wind), .SDcols = c(int_names, mion_names)]
   
@@ -2325,15 +2374,23 @@ local({
                                             "Leading_Protein",
                                             "Leading_ProSite")]
   
-  df_glycan_data2 <- df_modpept[, lapply(.SD, function(x) {
+  df_glycan_data2 <- df_modpept[, .(Glycotope = unlist(Map(function(gf, ga, unf, una){
     
-    glycotopes <- unlist(stringr::str_split(x, "[/;&]"))
-    glycotopes <- gsub(" ", "", glycotopes)
-    glycotopes <- glycotopes[!is.na(glycotopes) & glycotopes != ""]
+    gf <- unlist(stringr::str_split(gf, "[/;]"))
+    ga <- unlist(stringr::str_split(ga, "[/;]"))
+    unf <- unlist(stringr::str_split(unf, "[/;]"))
+    una <- unlist(stringr::str_split(una, "[/;]"))
+    
+    glycotopes <- gf[unf != "+"]
+    glycotopes <- c(glycotopes, ga[una != "+"])
+    glycotopes <- glycotopes[!is.na(glycotopes) & glycotopes != "" & glycotopes != "NA"]
     glycotopes <- unique(glycotopes)
+    
     return(paste(glycotopes, collapse = ";"))
     
-  }), by = .(`Glycan(H,N,A,G,F)`), .SDcols = c("Glycotope")]
+  }, gf = Glycotope_F, ga = Glycotope_A, unf = Glycotope_F_unmatched, una = Glycotope_A_unmatched))),
+  by = .(`Glycan(H,N,A,G,F)`)]
+  df_glycan_data2 <- df_glycan_data2[!duplicated(df_glycan_data2[, c("Glycan(H,N,A,G,F)")])]
   
   df_glycan_data3 <- df_modpept[, head(.SD, 1), 
                                 by = .(`Glycan(H,N,A,G,F)`),
@@ -2360,11 +2417,16 @@ local({
               "df_glycan_int"))
   
   # combine intensities for glycotopes
-  temp <- df_scans[, list(Glycotope = unlist(stringr::str_split(Glycotope, "&"))), by = "id"]
-  temp[, Glycotope := gsub(" ", "", Glycotope)]
+  # temp <- df_scans[, list(Glycotope = unlist(stringr::str_split(Glycotope, "&"))), by = "id"]
+  # temp[, Glycotope := gsub(" ", "", Glycotope)]
+  
+  temp <- rbind(df_scans[, .(Glycotope = Glycotope_F,
+                             Glycotope_unmatched = Glycotope_F_unmatched), by = "id"],
+                df_scans[, .(Glycotope = Glycotope_A,
+                             Glycotope_unmatched = Glycotope_A_unmatched), by = "id"])
   temp <- temp[!is.na(Glycotope) & Glycotope != ""]
-  temp <- merge(temp, df_scans[, -c("Glycotope")], by = "id", all.x = TRUE)
-  temp <- temp[glycotope_unmatched != "+"]
+  temp <- temp[Glycotope_unmatched != "+"]
+  temp <- merge(temp, df_scans[, -c("Glycotope_F", "Glycotope_A", "Glycotope_F_unmatched", "Glycotope_A_unmatched")], by = "id", all.x = TRUE)
 
   df_glycotope_data  <- temp[, lapply(.SD, paste, collapse = ";"),
                                  by = .(Glycotope),
