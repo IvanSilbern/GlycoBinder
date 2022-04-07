@@ -731,14 +731,14 @@ defineGlycoTope <- function(df, limit_intensity = 0.1){
        Hex_HexNAc_2Fuc_658 < limit_intensity &
        Hex_HexNAc_Fuc_512 > limit_intensity,
      Glycotope_F := "HN(F)"]
-  df[!is.na(Glycotope_F) &
+  df[Glycotope_F != "" &
        (NeuAc_H2O_274 > limit_intensity | NeuAc_292 > limit_intensity) &
        `3NeuAc_Hex_NexNAc_1239` > limit_intensity,
        Glycotope_A := "AAAHN or AAHN(A)"]
   df[Glycotope_A == "AAAHNorAAHN(A)" &
        NeuAc_HexNAc_495 > limit_intensity,
      Glycotope_A := "AAHN(A)"]
-  df[!is.na(Glycotope_F) &
+  df[Glycotope_F != "" &
        (NeuAc_H2O_274 > limit_intensity | NeuAc_292 > limit_intensity) &
        `3NeuAc_Hex_NexNAc_1239` < limit_intensity &
        `2NeuAc_Hex_HexNAc_948` > limit_intensity,
@@ -751,7 +751,7 @@ defineGlycoTope <- function(df, limit_intensity = 0.1){
        NeuAc_HexNAc_495 < limit_intensity &
        NeuAc_NeuAc_583 > limit_intensity,
      Glycotope_A := "AAHN"]
-  df[!is.na(Glycotope_F) &
+  df[Glycotope_F != "" &
        (NeuAc_H2O_274 > limit_intensity | NeuAc_292 > limit_intensity) &
        `3NeuAc_Hex_NexNAc_1239` < limit_intensity &
        `2NeuAc_Hex_HexNAc_948` < limit_intensity &
@@ -767,7 +767,7 @@ defineGlycoTope <- function(df, limit_intensity = 0.1){
      Glycotope_A := "AHN"]
   
   df[, Glycotope := Glycotope_F]
-  df[!is.na(Glycotope_F) & !is.na(Glycotope_A), Glycotope := paste0(Glycotope_F, " & ", Glycotope_A)]
+  df[Glycotope_F != "" & Glycotope_A != "", Glycotope := paste0(Glycotope_F, " & ", Glycotope_A)]
   
   df <- df[, .SD, .SDcols = c(names(df)[1:which(names(df) == "GlycanAntennaType")],
                               "Glycotope", "Glycotope_F", "Glycotope_A",
