@@ -1441,70 +1441,6 @@ if(any(contain_ms3) && !all(file.exists(paste0("pparse_output/", gsub("\\.raw$",
 
 cat("\n")
 
-##### identify oxonium ions #####
-if(!skip_marker_ions){
-
-local({
-  
-  message("\nidentify marker ions")
-  
-  if(!dir.exists("pglyco_output")) dir.create("pglyco_output")
-  
-  if(!file.exists("marker_ions.txt")) {
-    
-    marker_ions <- fread(marker_ions, sep = ";")
-    fwrite(marker_ions, "marker_ions.txt", sep = "\t")
-    
-  } else {
-    
-    marker_ions_temp <- fread("marker_ions.txt")
-    
-    marker_ions_temp[, Mass := as.numeric(Mass)]
-    marker_ions_temp <- marker_ions_temp[!is.na(Mass)]
-    marker_ions_temp <- marker_ions_temp[!duplicated(Mass)]
-    
-    
-    if(nrow(marker_ions_temp) == 0){
-      
-      message("A problem has occured with supplied oxonium ion table. Use default oxonium ions")
-      marker_ions <- fread(marker_ions, sep = ";")
-      
-    } else {
-      
-      marker_ions <- marker_ions_temp
-      
-    }
-    
-  }
-  
-  plan(strategy = "multisession")
-  
-  # use future_lapply function for parallelization
-  list_dt <- future_lapply(raw_file_names, FUN = function(file_name){
-    
-    # read mgf file (msconvert output)
-    mgf <- readMgf(paste0("pparse_output/", gsub(".raw", "_pParse_mod.mgf", file_name)))
-    
-    # remove duplicated scan numbers (pParse assigns multiple precursor masses per scan)
-    mgf <- mgf[!duplicated(mgf$scan_number)] 
-    #mgf <- mgf[scan_number %in% unique(res[RawName == raw_file_names[i]]$Scan)]
-    
-    ion_match(marker_ions, mgf, 0.01, "Th")
-    
-  })
-  
-  list_dt <- Map(function(dt, RawName) return(dt[, RawName := RawName]),
-                 dt = list_dt, RawName = gsub(".raw", "", raw_file_names))
-  marker_dt <- rbindlist(list_dt)
-  marker_dt <- marker_dt[!duplicated(marker_dt[, c("Scan", "RawName")])]
-  
-  fwrite(marker_dt, "pglyco_output\\marker_ions_identified.txt", sep = "\t")
-  
-  plan(strategy = "sequential")
-
-})
-
-}
 ##### run pGlyco #####
 
 if(!output_pglyco1_exists &&                 # output from the first pGlyco search does not exist
@@ -1942,9 +1878,6 @@ local({
   # format the raw file names
   Search_file[, RawName := gsub("\\..+$", "", Search_file$GlySpec)] 
   
-  # read marker ion intensities
-  if(!skip_marker_ions) marker_dt <- fread("pglyco_output/marker_ions_identified.txt")
-  
   #combine matrix files into a single file
   matrix_name <- stringr::str_split(matrix_files, "\\.", simplify = TRUE)[, 1]
   Matrix_file <- data.table()
@@ -1961,9 +1894,6 @@ local({
   Search_match_all <- merge(Search_file, Matrix_file,
                             by.x = c("RawName", "Scan"), by.y = c("RawName", "MS2ScanNumber"))
   
-  
-  if(!skip_marker_ions) Search_match_all <- merge(Search_match_all, marker_dt, by = c("Scan", "RawName"), all.x = TRUE)
-  
   # write combined data
   fwrite(Search_match_all, "pglyco_output/pglyco_quant_results.txt",
          na = "NA", row.names = FALSE, quote = FALSE, sep = "\t")
@@ -1978,6 +1908,78 @@ local({
 #   fwrite(defineGlycoTope(df = defineGlycoType(df)), "pglyco_output/pglyco_quant_results.txt", sep = "\t")
 #   
 #   })
+
+##### identify oxonium ions #####
+if(!skip_marker_ions){
+  
+  local({
+    
+    message("\nidentify marker ions")
+    
+    if(!dir.exists("pglyco_output")) dir.create("pglyco_output")
+    
+    if(!file.exists("marker_ions.txt")) {
+      
+      marker_ions <- fread(marker_ions, sep = ";")
+      fwrite(marker_ions, "marker_ions.txt", sep = "\t")
+      
+    } else {
+      
+      marker_ions_temp <- fread("marker_ions.txt")
+      
+      marker_ions_temp[, Mass := as.numeric(Mass)]
+      marker_ions_temp <- marker_ions_temp[!is.na(Mass)]
+      marker_ions_temp <- marker_ions_temp[!duplicated(Mass)]
+      
+      
+      if(nrow(marker_ions_temp) == 0){
+        
+        message("A problem has occured with supplied oxonium ion table. Use default oxonium ions")
+        marker_ions <- fread(marker_ions, sep = ";")
+        
+      } else {
+        
+        marker_ions <- marker_ions_temp
+        
+      }
+      
+    }
+    
+    plan(strategy = "multisession")
+    pglyco_output <- fread("pglyco_output/pglyco_quant_results.txt")
+    
+    # use future_lapply function for parallelization
+    list_dt <- future_lapply(raw_file_names, FUN = function(file_name){
+      
+      # read mgf file (msconvert output)
+      mgf <- readMgf(paste0("pparse_output/", gsub(".raw", "_pParse_mod.mgf", file_name)))
+      
+      # remove duplicated scan numbers (pParse assigns multiple precursor masses per scan)
+      mgf <- mgf[!duplicated(mgf$scan_number)] 
+      
+      # keep only identified scans 
+      mgf <- mgf[scan_number %in% pglyco_output[RawName ==  gsub(".raw$", "", file_name)]$Scan]
+      
+      ion_match(marker_ions, mgf, 0.01, "Th")
+      
+    })
+    
+    list_dt <- Map(function(dt, RawName) return(dt[, RawName := RawName]),
+                   dt = list_dt, RawName = gsub(".raw", "", raw_file_names))
+    marker_dt <- rbindlist(list_dt)
+    marker_dt <- marker_dt[!duplicated(marker_dt[, c("Scan", "RawName")])]
+    
+    # add marker ion intensities to pglyco output
+    pglyco_output <- merge(pglyco_output, marker_dt, by = c("Scan", "RawName"), all.x = TRUE)
+    fwrite(marker_dt, "pglyco_output/marker_ions_identified.txt", sep = "\t")
+    fwrite(pglyco_output, "pglyco_output/pglyco_quant_results.txt", sep = "\t")
+    
+    plan(strategy = "sequential")
+    
+  })
+  
+}
+
 
 if(!file.exists("pglyco_output/pglyco_quant_results.txt")) stop("Cannot find combined result file from pGlyco and RawTools output")
 local({
