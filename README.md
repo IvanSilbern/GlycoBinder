@@ -70,7 +70,7 @@ The easiest way to execute *GlycoBinder* is to follow the steps:
 2. Open the command line and set the working directory to the working directory organized above using `cd` command
 3. Specify the path to the *Rscript.exe* (or just "Rscript.exe" if the file path is set in environmental variables)
 4. Specify the path to the *GlycoBinder.R* file (simply "GlycoBinder.R" if the file is located in the same directory)
-5. Specify peptide labeling reagent after `--reporter_ion` flag (values supported by *RawTools* are allowed: `TMT0`, `TMT2`, `TMT6`, `TMT10`, `TMT11`, `TMT16`, `iTRAQ4`, `iTRAQ8`), e.g. `--reporter_ion TMT6`
+5. Specify peptide labeling reagent after `--reporter_ion` (values supported by *RawTools* are allowed: `TMT0`, `TMT2`, `TMT6`, `TMT10`, `TMT11`, `TMT16`, `iTRAQ4`, `iTRAQ8`, `not_labeled`), e.g. `--reporter_ion TMT6`
 6. Specify additional arguments (s. below)
 
 Suppose, *.raw* files, the *.fasta* file, and *GlycoBinder.R* script are located in *C:/data* folder, and peptides were labeled using TMT6plex reagents, the minimum required input would look like:
@@ -258,8 +258,8 @@ Make sure that *.raw* files are located in the specified working directory and h
 
 5. Minimal requirements to run *GlycoBinder* are:
 - Installed and properly configured environment (R and respective packages, external tools, configured file paths)
-- Directory containing *.raw* files and a *.fasta* file. The path to the directory is specified after `--wd` flag in the command line 
-- Specifying which labeling reagent was used for quantification by using `--reporter_ion` flag.
+- Working directory containing *.raw* files and a *.fasta* file. The path to the directory is specified after `--wd` flag in the command line 
+- Specifying which labeling reagent was used for quantification by using `--reporter_ion`.
 
 6. Use of external tools with different parameters  
 Output of all external tools can be created outside of *GlycoBinder* workflow and then copied into respective output folder within the *GlycoBinder* working directory. In this case, *GlycoBinder* will skip the respective processing step if it can find respective files.  
