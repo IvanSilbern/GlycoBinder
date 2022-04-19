@@ -832,7 +832,8 @@ supported_reporter_ions <- c("TMT0",
                              "TMT11",
                              "TMT16",
                              "iTRAQ4",
-                             "iTRAQ8")
+                             "iTRAQ8",
+                             "not_labeled")
 
 # parallelizing strategy for the "future" package
 plan_strategy <- "multisession"
@@ -861,8 +862,8 @@ pglyco_config_default <- c("[version]",
                            "[modification]",
                            "fix_total=3",
                            "fix1=Carbamidomethyl[C]",
-                           "fix2=TMT6plex[K]",
-                           "fix3=TMT6plex[AnyN-term]",
+                           "fix2=",
+                           "fix3=",
                            "max_var_modify_num=3",
                            "var_total=1",
                            "var1=Oxidation[M]",
@@ -1049,7 +1050,8 @@ if(!all(file.exists(paste0("rawtools_output\\", raw_file_names, "_Matrix.txt")))
     )
     
     # prepare a string of arguments
-    RawTools_args    <- c('-parse', '-d', paste0('"', wd, '"'), '-out', paste0('"', wd, '/rawtools_output', '"'), '-q', '-r', reporter_ion, '-R', '-u') # pay attention to file paths with empty spaces!
+    RawTools_args    <- c('-parse', '-d', paste0('"', wd, '"'), '-out', paste0('"', wd, '/rawtools_output', '"'), '-R', '-u')
+    if(reporter_ion != "not_labeled")  RawTools_args    <- c( RawTools_args, '-q', '-r', reporter_ion)
     message(paste0("Running Rawtools with arguments ", paste(RawTools_args, collapse = " ")))
     
     # run the command
@@ -1515,19 +1517,22 @@ if(!output_pglyco1_exists &&                 # output from the first pGlyco sear
       #fixed modifications
       
       # fixed modification should match the reporter_ion_type parameter for RawTools
-      if(reporter_ion == "TMT0"){
+      if(reporter_ion != "not_labeled"){
         
-        fixed_mod_reporter <- "TMT"
+        if(reporter_ion == "TMT0"){
+          
+          fixed_mod_reporter <- "TMT"
+          
+        } else {
+          
+          fixed_mod_reporter <- paste0(reporter_ion, "plex")
+          
+        }
         
-      } else {
-        
-        fixed_mod_reporter <- paste0(reporter_ion, "plex")
+        pglyco_config[grepl("^fix2=", pglyco_config)]       <- paste0("fix2=", fixed_mod_reporter, "[K]")
+        pglyco_config[grepl("^fix3=", pglyco_config)]       <- paste0("fix3=", fixed_mod_reporter, "[AnyN-term]")
         
       }
-      
-      pglyco_config[grepl("^fix2=", pglyco_config)]       <- paste0("fix2=", fixed_mod_reporter, "[K]")
-      pglyco_config[grepl("^fix3=", pglyco_config)]       <- paste0("fix3=", fixed_mod_reporter, "[AnyN-term]")
-      
       # total number of files to analyze
       
       pglyco_config[grepl("^spectrum_total=", pglyco_config)] <- paste0("spectrum_total=", length(raw_file_names))
@@ -1727,18 +1732,22 @@ if(any(grepl("^pGlyco_task.*\\.pglyco$", list.files()))){ #check if configuratio
   #fixed modifications
   
   # fixed modification should match the reporter_ion_type parameter for RawTools
-  if(reporter_ion == "TMT0"){
+  if(reporter_ion != "not_labeled"){
+  
+    if(reporter_ion == "TMT0"){
+      
+      fixed_mod_reporter <- "TMT"
+      
+    } else {
+      
+      fixed_mod_reporter <- paste0(reporter_ion, "plex")
+      
+    }
     
-    fixed_mod_reporter <- "TMT"
-    
-  } else {
-    
-    fixed_mod_reporter <- paste0(reporter_ion, "plex")
+    pglyco_config[grepl("^fix2=", pglyco_config)]       <- paste0("fix2=", fixed_mod_reporter, "[K]")
+    pglyco_config[grepl("^fix3=", pglyco_config)]       <- paste0("fix3=", fixed_mod_reporter, "[AnyN-term]")
     
   }
-  
-  pglyco_config[grepl("^fix2=", pglyco_config)]       <- paste0("fix2=", fixed_mod_reporter, "[K]")
-  pglyco_config[grepl("^fix3=", pglyco_config)]       <- paste0("fix3=", fixed_mod_reporter, "[AnyN-term]")
   
   # total number of files to analyze
   
@@ -1945,7 +1954,7 @@ if(!skip_marker_ions){
       
     }
     
-    plan(strategy = "multisession")
+    plan(strategy = plan_strategy, workers = nr_threads, gc = TRUE)
     pglyco_output <- fread("pglyco_output/pglyco_quant_results.txt")
     
     # use future_lapply function for parallelization
@@ -2493,11 +2502,15 @@ local({
   }
   
   # convert reporter ion intensities into %
-  use_tables <- c("scans", "modpept", "sites", "gforms", "glycans", "glycotopes")
-  for(i in use_tables){
-  
-    if(nrow(dat[[i]]) == 0) next
-    dat[[i]] <- percentIntensity(dat[[i]], int_names = int_names)
+  if(reporter_ion != "not_labeled"){
+    
+    use_tables <- c("scans", "modpept", "sites", "gforms", "glycans", "glycotopes")
+    for(i in use_tables){
+    
+      if(nrow(dat[[i]]) == 0) next
+      dat[[i]] <- percentIntensity(dat[[i]], int_names = int_names)
+    
+    }
   
   }
   
