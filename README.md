@@ -197,6 +197,8 @@ The table is based on pGlyco_modified_peptides.txt table. Each row contains info
 7. `marker_ions_identified.txt`  
 The table contains intensities of all identified marker ions per scan/raw file.
 
+8. `pGlyco_glycotope.txt` summarizes the intensities for each non-conflicting glycotope (s. description below).
+
 ### Defining Glycan Type/Glycan antenna types  
 
 GlycoBinder reports putative glycan type / glycan antenna type in `GlycanType` and `GlycanAntennaType`, respectively.  
@@ -217,6 +219,11 @@ Output tables `pGlyco_glycoforms.txt`, `pGlyco_glycosites.txt`, and `pGlyco_glyc
 1. `CoreFuc` corresponds to CoreFuc output of pGlyco. Values (0, 10, 11, 12) for each scan are separated by ";". Refer to a pGlyco manual for a detailed description of values.  
 2. `FucoseStruct`  contains TRUE if the anticipated structure determined by pGlyco contains a fucose (F). FALSE otherwise.  
 3. `CoreFucoseOnly` "Yes" if all corresponding scans are of "11" or "12" CoreFuc type. "No" if all scans are of "0" type. "Ambiguous" in other cases.  
+
+### Determining glycotope
+Based on the presence of the specific marker ions, *Glycobinder* will also attempt to determine one of the "basic" glycotopes: `HN(F), AHN, HN(A), H(F)N(F), AHN(F), AHN(A), AAHN, AAHN(A), AAAHN, AHNorHN(A), AHN(A)orAAHN, AAAHNorAAHN(A)`.
+Potential conflicts with glycan composition reported by pGlyco are marked as "+". 
+
 
 ### Parent peak area
 
