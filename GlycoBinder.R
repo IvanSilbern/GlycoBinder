@@ -734,7 +734,7 @@ defineGlycoTope <- function(df, limit_intensity = 0.1){
   df[Glycotope_F != "" &
        (NeuAc_H2O_274 > limit_intensity | NeuAc_292 > limit_intensity) &
        `3NeuAc_Hex_NexNAc_1239` > limit_intensity,
-       Glycotope_A := "AAAHN or AAHN(A)"]
+       Glycotope_A := "AAAHNorAAHN(A)"]
   df[Glycotope_A == "AAAHNorAAHN(A)" &
        NeuAc_HexNAc_495 > limit_intensity,
      Glycotope_A := "AAHN(A)"]
@@ -2441,14 +2441,7 @@ local({
 
   df_glycotope_data  <- temp[, lapply(.SD, paste, collapse = ";"),
                                  by = .(Glycotope),
-                                .SDcols = c("id",
-                                            "Scan",
-                                            "Proteins",
-                                            "Glycan(H,N,A,G,F)",
-                                            "GlycanType",
-                                            "GlycanAntennaType",
-                                            "GlyID",
-                                            "GlyMass")]
+                                .SDcols = c("id")]
 
   df_glycotope_int   <- temp[, lapply(.SD, sum, na.rm = TRUE),
                                 by = .(Glycotope),
