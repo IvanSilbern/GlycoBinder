@@ -70,7 +70,7 @@ The easiest way to execute *GlycoBinder* is to follow the steps:
 2. Open the command line and set the working directory to the working directory organized above using `cd` command
 3. Specify the path to the *Rscript.exe* (or just "Rscript.exe" if the file path is set in environmental variables)
 4. Specify the path to the *GlycoBinder.R* file (simply "GlycoBinder.R" if the file is located in the same directory)
-5. Specify peptide labeling reagent after `--reporter_ion` flag (values supported by *RawTools* are allowed: `TMT0`, `TMT2`, `TMT6`, `TMT10`, `TMT11`, `TMT16`, `iTRAQ4`, `iTRAQ8`), e.g. `--reporter_ion TMT6`
+5. Specify peptide labeling reagent after `--reporter_ion` (values supported by *RawTools* are allowed: `TMT0`, `TMT2`, `TMT6`, `TMT10`, `TMT11`, `TMT16`, `iTRAQ4`, `iTRAQ8`, `not_labeled`), e.g. `--reporter_ion TMT6`
 6. Specify additional arguments (s. below)
 
 Suppose, *.raw* files, the *.fasta* file, and *GlycoBinder.R* script are located in *C:/data* folder, and peptides were labeled using TMT6plex reagents, the minimum required input would look like:
@@ -197,6 +197,8 @@ The table is based on pGlyco_modified_peptides.txt table. Each row contains info
 7. `marker_ions_identified.txt`  
 The table contains intensities of all identified marker ions per scan/raw file.
 
+8. `pGlyco_glycotope.txt` summarizes the intensities for each non-conflicting glycotope (s. description below).
+
 ### Defining Glycan Type/Glycan antenna types  
 
 GlycoBinder reports putative glycan type / glycan antenna type in `GlycanType` and `GlycanAntennaType`, respectively.  
@@ -217,6 +219,11 @@ Output tables `pGlyco_glycoforms.txt`, `pGlyco_glycosites.txt`, and `pGlyco_glyc
 1. `CoreFuc` corresponds to CoreFuc output of pGlyco. Values (0, 10, 11, 12) for each scan are separated by ";". Refer to a pGlyco manual for a detailed description of values.  
 2. `FucoseStruct`  contains TRUE if the anticipated structure determined by pGlyco contains a fucose (F). FALSE otherwise.  
 3. `CoreFucoseOnly` "Yes" if all corresponding scans are of "11" or "12" CoreFuc type. "No" if all scans are of "0" type. "Ambiguous" in other cases.  
+
+### Determining glycotope
+Based on the presence of the specific marker ions, *Glycobinder* will also attempt to determine one of the "basic" glycotopes: `HN(F), AHN, HN(A), H(F)N(F), AHN(F), AHN(A), AAHN, AAHN(A), AAAHN, AHNorHN(A), AHN(A)orAAHN, AAAHNorAAHN(A)`.
+Potential conflicts with glycan composition reported by pGlyco are marked as "+". 
+
 
 ### Parent peak area
 
@@ -258,8 +265,8 @@ Make sure that *.raw* files are located in the specified working directory and h
 
 5. Minimal requirements to run *GlycoBinder* are:
 - Installed and properly configured environment (R and respective packages, external tools, configured file paths)
-- Directory containing *.raw* files and a *.fasta* file. The path to the directory is specified after `--wd` flag in the command line 
-- Specifying which labeling reagent was used for quantification by using `--reporter_ion` flag.
+- Working directory containing *.raw* files and a *.fasta* file. The path to the directory is specified after `--wd` flag in the command line 
+- Specifying which labeling reagent was used for quantification by using `--reporter_ion`.
 
 6. Use of external tools with different parameters  
 Output of all external tools can be created outside of *GlycoBinder* workflow and then copied into respective output folder within the *GlycoBinder* working directory. In this case, *GlycoBinder* will skip the respective processing step if it can find respective files.  
