@@ -1862,18 +1862,14 @@ if(second_search){
 }  
 
 ##### combine pglyco output and RawTools output #####
-
-# find pGlyco output file
 local({
   
+  # find pGlyco output file
   if(second_search) pattern <- "-Pro2.txt$" else pattern <- "-Pro.txt$"
   pglyco_out <- list.files(path = "pglyco_output", pattern = pattern, full.names = TRUE)
   
   if(length(pglyco_out) == 0) stop(paste0("Cannot find pGlyco output files"))
   if(verbose) message(paste0("Found pGlyco files:\n", paste(pglyco_out, collapse = "\n")))
-  if(length(pglyco_out) > 1 && verbose) message("Found several pGlyco output files - only the first one will be used (", pglyco_out[1], ")")
-  
-  pglyco_out <- pglyco_out[1]
   
   # check that matrix files are present
   matrix_files  <- list.files(path = "rawtools_output", pattern = "_Matrix.txt", full.names = FALSE)
@@ -1881,43 +1877,48 @@ local({
   if(verbose) message(paste0("Found _Matrix.txt files:\n", paste(matrix_files, collapse = "\n")))
   if(verbose) message("Combining pglyco and RawTools output")
   
-  # read the pglyco output file
-  Search_file <- fread(pglyco_out, header = T, na.strings = "NA",
-                       stringsAsFactors = FALSE, key = "Scan")
-  
-  # format the raw file names
-  Search_file[, RawName := gsub("\\..+$", "", Search_file$GlySpec)] 
-  
-  #combine matrix files into a single file
-  matrix_name <- stringr::str_split(matrix_files, "\\.", simplify = TRUE)[, 1]
-  Matrix_file <- data.table()
-  for(i in seq_along(matrix_name)){
+  addRawtoolsData <- function(search_files,
+                              rawtools_files){
     
-    mat_data <- fread(paste0("rawtools_output/", matrix_files[i]),
-                      stringsAsFactors = FALSE, header = TRUE, key = "MS2ScanNumber")
-    #remove an empty column if it is appended
-    if(sum(is.na(mat_data[, c(ncol(..mat_data))])) == nrow(mat_data)) mat_data <- mat_data[, -ncol(mat_data), with = FALSE]
-    mat_data[, RawName := matrix_name[i]]
-    Matrix_file <- rbind(Matrix_file, mat_data)
+    # read the pglyco output file
+    search_data <- data.table()
+    for(i in seq_along(pglyco_out)){
+      
+      search_data <- rbind(search_data,
+                           fread(search_files[i], header = T, na.strings = "NA",
+                                 stringsAsFactors = FALSE, key = "Scan"))  
+      
+    }
+    
+    # format the raw file names
+    search_data[, RawName := gsub("\\..+$", "", search_data$GlySpec)]
+    
+    # read rawtools output
+    matrix_names <- stringr::str_split(rawtools_files, "\\.", simplify = TRUE)[, 1]
+    rawtools_data <- data.table()
+    for(i in seq_along(rawtools_files)){
+      
+      temp <- fread(paste0("rawtools_output/", rawtools_files[i]),
+                        stringsAsFactors = FALSE, header = TRUE, key = "MS2ScanNumber")
+      #remove an empty column if it is appended
+      if(sum(is.na(temp[, c(ncol(..temp))])) == nrow(temp)) temp <- temp[, -ncol(temp), with = FALSE]
+      temp[, RawName := matrix_names[i]]
+      rawtools_data <- rbind(rawtools_data, temp)
+      
+    }
+    search_data <- merge(search_data, rawtools_data,
+                         by.x = c("RawName", "Scan"), by.y = c("RawName", "MS2ScanNumber"))
+    
+    return(search_data)
     
   }
-  Search_match_all <- merge(Search_file, Matrix_file,
-                            by.x = c("RawName", "Scan"), by.y = c("RawName", "MS2ScanNumber"))
   
-  # write combined data
-  fwrite(Search_match_all, "pglyco_output/pglyco_quant_results.txt",
+  search_data <- addRawtoolsData(search_files = pglyco_out, rawtools_files = matrix_files)
+
+  fwrite(search_data, "pglyco_output/pglyco_quant_results.txt",
          na = "NA", row.names = FALSE, quote = FALSE, sep = "\t")
   
 })
-
-##### define Glycan/Glycan Antenna types
-# if(!file.exists("pglyco_output/pglyco_quant_results.txt")) stop("Cannot find combined result file from pGlyco and RawTools output")
-# local({
-#   
-#   df <- fread("pglyco_output/pglyco_quant_results.txt", sep = "\t")
-#   fwrite(defineGlycoTope(df = defineGlycoType(df)), "pglyco_output/pglyco_quant_results.txt", sep = "\t")
-#   
-#   })
 
 ##### identify oxonium ions #####
 if(!skip_marker_ions){
