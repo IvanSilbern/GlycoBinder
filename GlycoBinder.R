@@ -2003,9 +2003,7 @@ if(!file.exists("pglyco_output/pglyco_quant_results.txt")) stop("Cannot find com
 local({
   
   df <- fread("pglyco_output/pglyco_quant_results.txt", sep = "\t")
-  # df <- defineGlycoType(df)
-  # df <- defineGlycoTope(df)
-  # df <- glycotopeConflict(df)
+
   fwrite(
     
     glycotopeConflict(
@@ -2019,22 +2017,6 @@ local({
     ), "pglyco_output/pglyco_quant_results.txt", sep = "\t")
   
 })
-
-# 
-# local({
-#   
-#   df <- fread("pglyco_output/pglyco_quant_results.txt", sep = "\t")
-#   fwrite(defineGlycoTope(df), "pglyco_output/pglyco_quant_results.txt", sep = "\t")
-#   
-# })
-# 
-# # check for Glycotope conflicts
-# local({
-#   
-#   df <- fread("pglyco_output/pglyco_quant_results.txt", sep = "\t")
-#   fwrite(glycotopeConflict(df), "pglyco_output/pglyco_quant_results.txt", sep = "\t")
-#   
-# })
 
 ##### Combine reporter ion intensities of each Glycoform on a particular site #####
 
