@@ -1425,6 +1425,7 @@ if(any(contain_ms3) && !all(file.exists(paste0("pparse_output/", gsub("\\.raw$",
       # replace ion intensities in mgf_pParse by merged intensities mgf_tab
       pparse_file <- pparse_out_files[gsub("_[A-Z]+FT\\.mgf", "", pparse_out_files) %in% gsub("\\.raw", "", file_name)]
       pparse_file <- paste0("pparse_output/", pparse_file)
+      save(mgf_tab, file = paste0("pparse_output/", gsub("\\.raw$", "_merged.Rdata", file_name)))
       change_ions_pParse(mgf_tab = mgf_tab, mgf_pParse = pparse_file, file_name = paste0("pparse_output/", gsub("\\.raw$", "_pParse_mod.mgf", file_name)))
       
     })
@@ -1961,15 +1962,22 @@ if(!skip_marker_ions){
     list_dt <- future_lapply(raw_file_names, FUN = function(file_name){
       
       # read mgf file (msconvert output)
-      mgf <- readMgf(paste0("pparse_output/", gsub(".raw", "_pParse_mod.mgf", file_name)))
-      
-      # remove duplicated scan numbers (pParse assigns multiple precursor masses per scan)
-      mgf <- mgf[!duplicated(mgf$scan_number)] 
+      if(file.exists(paste0("pparse_output/", gsub(".raw", "_merged.Rdata", file_name)))){
+        
+        load(paste0("pparse_output/", gsub(".raw", "_merged.Rdata", file_name)))
+        
+      } else {
+        
+        mgf_tab <- readMgf(paste0("pparse_output/", gsub(".raw", "_pParse_mod.mgf", file_name)))
+        # remove duplicated scan numbers (pParse assigns multiple precursor masses per scan)
+        mgf_tab <- mgf_tab[!duplicated(mgf_tab$scan_number)] 
+        
+      }
       
       # keep only identified scans 
-      mgf <- mgf[scan_number %in% pglyco_output[RawName ==  gsub(".raw$", "", file_name)]$Scan]
+      mgf_tab <- mgf_tab[scan_number %in% pglyco_output[RawName ==  gsub(".raw$", "", file_name)]$Scan]
       
-      ion_match(marker_ions, mgf, 0.01, "Th")
+      ion_match(marker_ions, mgf_tab, 0.01, "Th")
       
     })
     
@@ -1989,30 +1997,44 @@ if(!skip_marker_ions){
   
 }
 
+##### define Glycotypes and glycotopes #####
 
 if(!file.exists("pglyco_output/pglyco_quant_results.txt")) stop("Cannot find combined result file from pGlyco and RawTools output")
 local({
   
   df <- fread("pglyco_output/pglyco_quant_results.txt", sep = "\t")
-  fwrite(defineGlycoType(df), "pglyco_output/pglyco_quant_results.txt", sep = "\t")
+  # df <- defineGlycoType(df)
+  # df <- defineGlycoTope(df)
+  # df <- glycotopeConflict(df)
+  fwrite(
+    
+    glycotopeConflict(
+    
+      defineGlycoTope(
+      
+        defineGlycoType(df)
+      
+      )
+    
+    ), "pglyco_output/pglyco_quant_results.txt", sep = "\t")
   
 })
 
-##### define Glycotopes
-local({
-  
-  df <- fread("pglyco_output/pglyco_quant_results.txt", sep = "\t")
-  fwrite(defineGlycoTope(df), "pglyco_output/pglyco_quant_results.txt", sep = "\t")
-  
-})
-
-# check for Glycotope conflicts
-local({
-  
-  df <- fread("pglyco_output/pglyco_quant_results.txt", sep = "\t")
-  fwrite(glycotopeConflict(df), "pglyco_output/pglyco_quant_results.txt", sep = "\t")
-  
-})
+# 
+# local({
+#   
+#   df <- fread("pglyco_output/pglyco_quant_results.txt", sep = "\t")
+#   fwrite(defineGlycoTope(df), "pglyco_output/pglyco_quant_results.txt", sep = "\t")
+#   
+# })
+# 
+# # check for Glycotope conflicts
+# local({
+#   
+#   df <- fread("pglyco_output/pglyco_quant_results.txt", sep = "\t")
+#   fwrite(glycotopeConflict(df), "pglyco_output/pglyco_quant_results.txt", sep = "\t")
+#   
+# })
 
 ##### Combine reporter ion intensities of each Glycoform on a particular site #####
 
