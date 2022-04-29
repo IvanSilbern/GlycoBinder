@@ -965,7 +965,8 @@ parent_area_fun           <- "sum"
 args <- (commandArgs(TRUE))
 
 # log information
-message("Provided arguments:\n", paste(as.character(args), collapse = "\n"), "\n")
+message("Provided arguments:\n",
+        paste(as.character(args), collapse = "\n"), "\n")
 writeLog(log_gb, "Glycobinder started with arguments:", paste(as.character(args), collapse = " "))
 
 # working directory
@@ -1037,78 +1038,76 @@ if(any(grepl("--skip_marker_ions", args))) skip_marker_ions <- TRUE
 
 
 ##### read fasta file #####
-
-if(verbose) message("\n Read fasta file ")
-
-# find fasta file
-fasta.file <- list.files(pattern = "\\.[Ff][Aa][Ss][Tt][Aa]$")
-if(length(fasta.file) == 0) stop("Cannot find any .fasta files")
-if(verbose && length(fasta.file) > 1) message("More than one fasta files found. Use the first one: ", fasta.file[1])
-if(verbose) message("Read fasta file: ", fasta.file[1])
-
-# fasta file name
-fasta.file.name <- fasta.file[1]
-
-# read in fasta file
-fasta.file      <- fread(fasta.file.name, sep = NULL, header = FALSE)[[1]]
-
-# extract header positions
-ff_header_pos <- which(grepl("^>", fasta.file)) # Lines containing headers 
-ff_headers    <- stringr::str_split_fixed(fasta.file[ff_header_pos], pattern = " ", n = 2)[, 1] # extract protein id without description
-ff_headers    <- gsub("^>", "", ff_headers) # remove '>'
-
-# prepare a N2J fasta file if there is none
-if(!file.exists(paste0(fasta.file.name, ".N2J"))){
+local({
   
-  local({ 
+  # find fasta file
+  fasta_files <- list.files(pattern = "\\.[Ff][Aa][Ss][Tt][Aa]$")
+  if(length(fasta_files) == 0) stop("Cannot find any .fasta files")
+  if(verbose) message("Read fasta file: ", paste(fasta_files, collapse = "\n"))
+  if(length(fasta_files) > 1){
     
-    # prepare .N2J file for pGlyco
-    fasta.file.N2J <- fasta.file
+    fasta.name <<- "combined.fasta"
     
-    # replace all N.[STC] with [J.[STC]] in one line
-    while(any(grepl("N.[STC]", fasta.file.N2J[-ff_header_pos]))){
-      
-      fasta.file.N2J[-ff_header_pos] <- gsub("N(.[STC])", "J\\1", fasta.file.N2J[-ff_header_pos])
-      
+  } else {
+    
+    fasta.name <<- fasta_files
+    
+  }  
+  
+  readFASTA <- function(fasta_files){
+
+    fasta <- character()
+    for(i in seq_along(fasta_files)){
+
+      fasta <- c(fasta, fread(fasta_files[i], sep = NULL, header = FALSE)[[1]])
+
     }
-    
-    # replace those cases where line breaks within the sequence N.[STC]
-    
-    ### case 1
-    
-    # find lines that begins with [.STC]
-    begin_with <- stringr::str_which(fasta.file.N2J, "^[^>][STC]")
-    
-    # check the preceeding line
-    begin_with <- begin_with - 1
-    
-    # do not use if it is a header
-    begin_with <- begin_with[!begin_with %in% ff_header_pos]
-    
-    # if it ends with an N, replace it to J
-    fasta.file.N2J[begin_with] <- gsub("N$", "J", fasta.file.N2J[begin_with])
-    
-    ### case 2
-    
-    # find lines that begin with [STC]
-    begin_with <- stringr::str_which(fasta.file.N2J, "^[STC]")
-    
-    # check the preceeding line
-    begin_with <- begin_with - 1
-    
-    # do not use if it is a header
-    begin_with <- begin_with[!begin_with %in% ff_header_pos]
-    
-    # check if it ends with N., replace to J. in this case
-    fasta.file.N2J[begin_with] <- gsub("N(.)$", "J\\1", fasta.file.N2J[begin_with])
-    
-    # write down the modified fasta file
-    writeLines(fasta.file.N2J, paste0(fasta.file.name, ".N2J")) # don't use 'fwrite' function: it causes problems with pGlyco
-    
-  })
-  
-}
 
+    # extract header positions
+    # Lines containing headers
+    ff_header_pos <- which(grepl("^>", fasta))
+    ff_headers    <- fasta[ff_header_pos]
+
+    fasta[ff_header_pos] <- "___"
+    fasta <- paste0(fasta, collapse = "")
+    fasta <- unlist(stringr::str_split(fasta, "___"))
+    fasta <- fasta[-1]
+    fasta2 <- vector("character", length(ff_header_pos) * 2)
+    fasta2[seq(1, length(fasta2), 2)] <- ff_headers
+    fasta2[seq(2, length(fasta2), 2)] <- fasta
+    #
+    # # concatenate sequence lines
+    # for(i in seq_along(ff_header_pos)){
+    #
+    #   fasta2[(2 * i) - 1] <- fasta[ff_header_pos[i]]
+    #   if(i < length(ff_header_pos)){
+    #
+    #     fasta2[2 * i] <- paste0(fasta[(ff_header_pos[i] + 1) : (ff_header_pos[i + 1] - 1)], collapse = "")
+    #
+    #   } else {
+    #
+    #     fasta2[2 * i] <- paste0(fasta[(ff_header_pos[i] + 1) : length(fasta)], collapse = "")
+    #
+    #   }
+    #
+    # }
+
+    return(fasta2)
+
+  }
+  
+  fasta         <<- readFASTA(fasta_files)
+  ff_header_pos <<- seq(1, length(fasta), 2)
+  ff_headers    <<- stringr::str_split_fixed(fasta[ff_header_pos],
+                                            pattern = " ", n = 2)[, 1]
+  ff_headers    <<- gsub("^>", "", ff_headers)
+  fasta.N2J     <- fasta
+  fasta.N2J[-ff_header_pos] <- gsub("N(.[STC])", "J\\1", fasta.N2J[-ff_header_pos])
+  
+  # write down the modified fasta file
+  writeLines(fasta.N2J, paste0(fasta.name, ".N2J")) # don't use 'fwrite' function: it causes problems with pGlyco
+
+})
 ##### run RawTools #####
 
 if(!all(file.exists(paste0("rawtools_output\\", raw_file_names, "_Matrix.txt")))) {
@@ -1487,7 +1486,7 @@ if(!output_pglyco1_exists &&                 # output from the first pGlyco sear
       pglyco_config <- readLines(pglyco_config_file)
       
       #fasta
-      pglyco_config[grepl("^fasta=", pglyco_config)]      <- paste0("fasta=", wd,  "/", fasta.file.name, ".N2J")
+      pglyco_config[grepl("^fasta=", pglyco_config)]      <- paste0("fasta=", wd,  "/", fasta.name, ".N2J")
       
       writeLines(pglyco_config, "pGlyco_task.pglyco")
       
@@ -1513,7 +1512,7 @@ if(!output_pglyco1_exists &&                 # output from the first pGlyco sear
       pglyco_config[grepl("^output_dir=", pglyco_config)] <- paste0("output_dir=", normalizePath(paste0(wd, "/pglyco_output"), winslash = "\\"))
       
       #fasta
-      pglyco_config[grepl("^fasta=", pglyco_config)]      <- paste0("fasta=", wd,  "/", fasta.file.name, ".N2J")
+      pglyco_config[grepl("^fasta=", pglyco_config)]      <- paste0("fasta=", wd,  "/", fasta.name, ".N2J")
       
       #fixed modifications
       
@@ -1665,15 +1664,15 @@ if(second_search){
       proteins    <- unique(unlist(stringr::str_split(pglyco_file[["Proteins"]], "/")))
       proteins    <- proteins[!grepl("^REV_", proteins)]
       
-      if(!file.exists(gsub("(.+)\\.[Ff][Aa][Ss][Tt][Aa]$", "\\1_sub.fasta.N2J", fasta.file.name))){
+      if(!file.exists(gsub("(.+)\\.[Ff][Aa][Ss][Tt][Aa]$", "\\1_sub.fasta.N2J", fasta.name))){
         
-        ff_n2j <- fread(paste0(fasta.file.name, ".N2J"), sep = NULL, header = FALSE)[[1]]
+        ff_n2j <- fread(paste0(fasta.name, ".N2J"), sep = NULL, header = FALSE)[[1]]
         take   <- ff_headers %in% proteins
         start  <- ff_header_pos[which(take)]
         end    <- ff_header_pos[which(take) + 1] - 1 #line where starts the next header - 1
         end[is.na(end)] <- length(ff_n2j)
         
-        writeLines(unlist(Map(function(start, end) ff_n2j[start:end], start = start, end = end)), gsub("(.+)\\.fasta$", "\\1_sub.fasta.N2J", fasta.file.name))
+        writeLines(unlist(Map(function(start, end) ff_n2j[start:end], start = start, end = end)), gsub("(.+)\\.fasta$", "\\1_sub.fasta.N2J", fasta.name))
         
       }
       
@@ -1703,7 +1702,7 @@ if(second_search){
         pglyco_config <- readLines(pglyco_config_file)
         
         # change fasta file name to the name of the reduced fasta file
-        pglyco_config[grepl("^fasta=", pglyco_config)]      <- paste0("fasta=", wd,  "/", gsub("(.+)\\.fasta$", "\\1_sub.fasta.N2J", fasta.file.name))
+        pglyco_config[grepl("^fasta=", pglyco_config)]      <- paste0("fasta=", wd,  "/", gsub("(.+)\\.fasta$", "\\1_sub.fasta.N2J", fasta.name))
         
         writeLines(pglyco_config, "pGlyco_task.pglyco")
         
@@ -1728,7 +1727,7 @@ if(second_search){
         pglyco_config[grepl("^output_dir=", pglyco_config)] <- paste0("output_dir=", normalizePath(wd, winslash = "\\"))
         
         #fasta
-        pglyco_config[grepl("^fasta=", pglyco_config)]      <- paste0("fasta=", wd,  "/", gsub("(.+)\\.fasta$", "\\1_sub.fasta.N2J", fasta.file.name))
+        pglyco_config[grepl("^fasta=", pglyco_config)]      <- paste0("fasta=", wd,  "/", gsub("(.+)\\.fasta$", "\\1_sub.fasta.N2J", fasta.name))
         
         #fixed modifications
         
@@ -2084,7 +2083,7 @@ local({
   # find header position in the fasta file
   df_prot[, ff_header_pos :=  ..ff_header_pos[match(df_prot$Protein_single, ..ff_headers)]]
   df_prot[, ff_seq_stop   := (..ff_header_pos[match(df_prot$Protein_single, ..ff_headers) + 1] - 1)]
-  df_prot[is.na(ff_seq_stop), ff_seq_stop := length(fasta.file)]
+  df_prot[is.na(ff_seq_stop), ff_seq_stop := length(fasta)]
   
   if(verbose && sum(is.na(df_prot$ff_header_pos)) > 0) message("\nProteins not found in fasta file: ", sum(is.na(df_prot$ff_header_pos)))
   
@@ -2095,7 +2094,7 @@ local({
     temp_seq_stop   <- df_prot$ff_seq_stop[i]
     temp_seq_pos    <- as.integer(df_prot$ProSite_single[i])
     
-    temp_sequence <- paste0(fasta.file[(temp_header_pos + 1) : temp_seq_stop], collapse = "")
+    temp_sequence <- paste0(fasta[(temp_header_pos + 1) : temp_seq_stop], collapse = "")
     temp_seq_wind <- substr(temp_sequence, start = temp_seq_pos - seq_wind_size, stop = temp_seq_pos + seq_wind_size)
     
     # if the site is located at the end of the sequence: append "___"
