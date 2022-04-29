@@ -1110,30 +1110,38 @@ local({
 })
 ##### run RawTools #####
 
-if(!all(file.exists(paste0("rawtools_output\\", raw_file_names, "_Matrix.txt")))) {
+if(!all(file.exists(paste0("rawtools_output\\",
+                           raw_file_names,
+                           "_Matrix.txt")))) {
   
   local({
     
-    # create output folder
-    suppressWarnings(
+    # output folder
+    if(!dir.exists("rawtools_output")) dir.create("rawtools_output")
       
-      dir.create("rawtools_output\\")
-      
-    )
-    
     # prepare a string of arguments
-    RawTools_args    <- c('-parse', '-d', paste0('"', wd, '"'), '-out', paste0('"', wd, '/rawtools_output', '"'), '-R', '-u')
-    if(reporter_ion != "not_labeled")  RawTools_args    <- c( RawTools_args, '-q', '-r', reporter_ion)
-    message(paste0("Running Rawtools with arguments ", paste(RawTools_args, collapse = " ")))
+    RawTools_args    <- c('-parse',
+                          '-d', paste0('"', wd, '"'),
+                          '-out', paste0('"', wd, '/rawtools_output', '"'),
+                          '-R', '-u')
     
-    # run the command
+    if(reporter_ion != "not_labeled"){
+      
+      RawTools_args <- c( RawTools_args, '-q', '-r', reporter_ion)
+      
+    }
+    
+    if(verbose) message(paste0("Running Rawtools with arguments ",
+                        paste(RawTools_args, collapse = " ")))
+    
+    # run
     system2(command = "RawTools", args = RawTools_args, wait = TRUE)
     
   })
   
 } else {
   
-  message("Found _Matrix.txt files for all .raw files. Skip RawTools processing")
+  message("Found all _Matrix.txt files. Skip RawTools processing")
   
 }
 
@@ -1141,7 +1149,10 @@ if(!all(file.exists(paste0("rawtools_output\\", raw_file_names, "_Matrix.txt")))
 contain_ms3 <- logical()
 for(i in seq_along(raw_file_names)){
   
-  contain_ms3[i] <- any(names(fread(paste0("rawtools_output\\", raw_file_names[i], "_Matrix.txt"), nrows = 1)) == "MS3ScanNumber")
+  contain_ms3[i] <- any(names(fread(paste0("rawtools_output\\",
+                                           raw_file_names[i],
+                                           "_Matrix.txt"),
+                                    nrows = 1)) == "MS3ScanNumber")
   
 }
 
