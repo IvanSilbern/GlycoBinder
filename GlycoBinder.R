@@ -1160,11 +1160,27 @@ for(i in seq_along(raw_file_names)){
 
 # check should be performed after the raw tools processing is finished
 # because it finds out which raw files contain MS3 scans
-output_msconvert_exists <- all(file.exists(paste0("msconvert_output\\", gsub("\\.raw$", "\\.mgf", raw_file_names[contain_ms3]))))
-output_pparsemod_exists <- all(file.exists(paste0("pparse_output/", gsub("\\.raw$", "_pParse_mod.mgf", raw_file_names))))
-output_pparse_exists    <- all(gsub("\\.raw$", "", raw_file_names) %in% gsub("_[A-Z]+FT\\.mgf", "", list.files(path = "pparse_output", pattern = "_[A-Z]+FT\\.mgf")))
-output_pglyco1_exists   <- any(grepl("-Pro.txt$", list.files(path = "pglyco_output")))
-output_pglyco2_exists   <- any(grepl("-Pro2.txt", list.files(path = "pglyco_output")))
+local({
+  
+  msconv_output <- gsub("\\.raw$", "\\.mgf",raw_file_names[contain_ms3])
+  msconv_output <- paste0("msconvert_output/", msconv_output)
+  output_msconvert_exists <<- all(file.exists(msconv_output))
+  
+  pparse_mod <- gsub("\\.raw$", "_pParse_mod.mgf", raw_file_names)
+  pparse_mod <- paste0("pparse_output/", pparse_mod)
+  output_pparse_exists <<- all(file.exists(pparse_mod))
+  
+  pparse_out <- list.files(path = "pparse_output", pattern = "_[A-Z]+FT\\.mgf")
+  pparse_out <- gsub("_[A-Z]+FT\\.mgf", "", pparse_out)
+  output_pparse_exists <<- all(gsub("\\.raw$", "", raw_file_names) %in%
+                                 pparse_out)
+  
+  output_pglyco1_exists   <<- any(grepl("-Pro.txt$",
+                                        list.files(path = "pglyco_output")))
+  output_pglyco2_exists   <<- any(grepl("-Pro2.txt",
+                                        list.files(path = "pglyco_output")))
+
+})
 
 ##### run MSConvert #####
 
