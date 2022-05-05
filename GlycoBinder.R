@@ -1175,6 +1175,10 @@ local({
   output_pparse_exists <<- all(gsub("\\.raw$", "", raw_file_names) %in%
                                  pparse_out)
   
+  pparsemod_out <- gsub("\\.raw$", "_pParse_mod.mgf", raw_file_names)
+  pparsemod_out <- paste0("pparse_output/", pparsemod_out)
+  output_pparsemod_exists <<- all(file.exists(pparsemod_out))
+  
   output_pglyco1_exists   <<- any(grepl("-Pro.txt$",
                                         list.files(path = "pglyco_output")))
   output_pglyco2_exists   <<- any(grepl("-Pro2.txt",
