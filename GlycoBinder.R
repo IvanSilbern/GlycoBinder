@@ -71,6 +71,9 @@ install_packages(packages_to_load, install = TRUE)
 library("data.table")
 library("future.apply")
 
+# set future options and parameters
+options(future.globals.maxSize = +Inf)
+
 ##### custom functions ######
 
 # write logs
@@ -188,140 +191,6 @@ readMgfHeader    <- function(path){
   
 }
 
-# merge MS2 and MS3 spectra
-merge_ms2_ms3 <- function(matrix_data, mgf_tab, 
-                          ion_match_tolerance,
-                          tolerance_unit){
-  
-  # Function combines ms2 and ms3 ion intensities
-  # Arguments:
-  # matrix_data = _Matrix.txt file from RawTools loaded as a data table
-  # mgf_tab = msconvert mgf file read in with readMgf function
-  # ion_match_tolerance = tolerance window for matching ions
-  # tolerance_unit = units of the tolerance window
-  #
-  # Value:
-  # !Function returns NULL, but it modifies mgf_tab in place!
-  
-  invisible(
-    
-    lapply(1:matrix_data[, .N], function(row_nr){
-      
-      scan_ms2 <- which(mgf_tab$scan_number == matrix_data$MS2ScanNumber[row_nr])[1]
-      scan_ms3 <- which(mgf_tab$scan_number == matrix_data$MS3ScanNumber[row_nr])[1]
-      
-      ms2 <- mgf_tab[scan_ms2, ions][[1]]
-      ms3 <- mgf_tab[scan_ms3, ions][[1]]
-      
-      if(length(ms2) == 0 || length(ms3) == 0) return(NULL)
-      
-      # first do a rough match by integer ion mz
-      not_matching <- which(!floor(ms3[, 1]) %in% c(floor(ms2[, 1]),
-                                                    (floor(ms2[, 1]) - 1),
-                                                    (floor(ms2[, 1]) + 1)))
-      
-      # combine spectra and stop if there are no matches
-      if(length(not_matching) == length(ms3[, 1])){
-        
-        ms2 <- rbind(ms2, ms3)
-        ms2 <- ms2[order(ms2[, 1]), ]
-        set(mgf_tab, i = scan_ms2, j = "ions", value = list(list(ms2)))
-        return(NULL)
-        
-      }
-      
-      # check remaining for overlap precisely
-      probable_match <- setdiff(seq_along(ms3[, 1]), not_matching) # indices of ms3 ions that might have a match to ms2 ions
-      test_ms3_ions  <- ms3[probable_match, 1]                     # mz values of ms3 ions that might have a match to ms2 ions
-      differences    <- abs(outer(test_ms3_ions, ms2[, 1], FUN = "-")) # mz differences between ms3 and ms2 ions
-      
-      # provide tolerance level for each ms3 ion
-      if(tolerance_unit == "ppm"){
-        
-        tolerances <- ion_match_tolerance*ms3[probable_match, 1]/10^6
-        
-      } else if(tolerance_unit == "Th"){
-        
-        tolerances <- rep(ion_match_tolerance, times = length(probable_match))
-        
-      } else {
-        
-        message("ion matching tolerance is 1Th")
-        tolerances <- rep(1, times = length(probable_match))
-        
-      }
-      
-      # which ions passed the tolerance cutoff
-      passed <- data.table(which(differences < tolerances | dplyr::near(differences, tolerances), arr.ind = TRUE))
-      
-      # combine spectra and stop if there are no ions that passed tolerance cutoff
-      if(passed[, .N] == 0) {
-        
-        ms2 <- rbind(ms2, ms3)
-        ms2 <- ms2[order(ms2[, 1]), ]
-        set(mgf_tab, i = scan_ms2, j = "ions", value = list(list(ms2)))
-        return(NULL)
-        
-      }
-      
-      # if one ms3 ion (row) corresponds to several ms2 ions, their indices will be saved as a list 
-      passed <- passed[, .(ms2_ind = list(c(col))), by = row]
-      
-      # one ms3 ion (row) -> one ms2 ion (ms2)
-      # decide which ions to merge
-      # ms2 column is a list, ms2[[1]] is required
-      
-      if(all(lengths(passed$ms2_ind) == 1)){
-        
-        passed[, best_ms2 := unlist(ms2_ind)]
-        
-      } else {
-        
-        passed[, best_ms2 := ms2_ind[[1]][1], by = "row"]
-        passed[lengths(ms2_ind) > 1, best_ms2 := ms2_ind[which.min(abs(ms2[ms2_ind[[1]]] - test_ms3_ions[row]))], by = "row"]
-        
-      }
-      
-      # one ms2 spectrum (row) -> one ms3 spectrum
-      # decide which ions to merge
-      # group by ms2 spectra
-      # note: ms3 column is a list, ms3[[1]] is required
-      passed2 <- passed[, .(ms3_ind = list(c(row))), by = best_ms2]
-      
-      if(all(lengths(passed2$ms3_ind) == 1)){
-        
-        passed2[, best_ms3 := unlist(ms3_ind)]
-        
-      } else {
-        
-        passed2[, best_ms3 := ms3_ind[[1]][1], by = "best_ms2"]
-        passed2[lengths(ms3_ind) > 1, best_ms3 := ms3_ind[which.min(abs(ms2[best_ms2] - test_ms3_ions[ms3_ind[[1]]]))], by = "best_ms2"]
-        
-      }
-      
-      
-      # get an actual index in ms3 (ms3_ind was pointing to probable_match)
-      passed2[, best_ms3 := probable_match[best_ms3], by = "best_ms2"]
-      
-      ms2[passed2[["best_ms2"]], 2] <- rowSums(matrix(c(ms2[passed2[["best_ms2"]], 2],
-                                                        ms3[passed2[["best_ms3"]], 2]), 
-                                                      byrow =FALSE, ncol = 2))
-      # remove matched ms3 ions
-      ms3 <- ms3[-passed2[["best_ms3"]], ]
-      
-      # combine ms2 and not-matching ms3 ions
-      ms2 <- rbind(ms2, ms3) 
-      ms2 <- ms2[order(ms2[, 1]), ]
-      
-      # update mgf
-      set(mgf_tab, i = scan_ms2, j = "ions", value = list(list(ms2)))
-      return(NULL)
-      
-    })
-  )
-  
-}
-
 # find marker ions
 ion_match <- function(marker_ions,
                       mgf,
@@ -363,67 +232,6 @@ ion_match <- function(marker_ions,
   names(dt) <- paste0(marker_ions$Marker, "_", trunc(marker_ions$Mass))
   dt[, Scan := mgf$scan_number]
   return(dt)
-  
-}
-
-# replace MS2 spectra in pParse by merged MS2/MS3 spectra
-change_ions_pParse <- function(mgf_tab, mgf_pParse, file_name, step = 500){
-  
-  # function keeps scan headers in the mgf from pParse
-  # it replaces the MS2 scans with merged MS2/MS3 scans
-  # save file as a new pdf
-  # Argments:
-  # mgf_tab = mgf file in form of data table with merged MS2/MS3 scans
-  # (after merge_ms2_ms3 function)
-  # mgf_pParse = path to pParse mgf file
-  # file_name = file name for the output file
-  # step = how many spectra to process at once, needed for optimization
-  # Value
-  # The function returns NULL; mgf file is saved under file_name
-  
-  if(file.exists(file_name)) suppressWarnings(file.remove(file_name)) 
-  
-  mgf_pParse <- readMgfHeader(mgf_pParse)
-  mgf_pParse <- merge(mgf_pParse, mgf_tab[, c("scan_number", "ions")], by = "scan_number", all.x = TRUE)
-  
-  if(nrow(mgf_pParse) < 1) stop()
-  
-  i <- 1
-  j <- min(step, nrow(mgf_pParse))
-  
-  while(TRUE){
-    
-    j <- min(j, nrow(mgf_pParse))
-    
-    fwrite(
-      
-      list(
-        
-        unlist(
-          
-          apply(X = mgf_pParse[i:j], MARGIN = 1, FUN = function(x){
-            
-            c(x[["scan_header"]], 
-              paste(x[["ions"]][,1], x[["ions"]][,2], sep = " "),
-              "END IONS")
-            
-          })
-          
-        )
-        
-      ),
-      
-      file_name,
-      append = TRUE
-      
-    )
-    
-    i <- i + step
-    
-    if(j == nrow(mgf_pParse)) break
-    else j <- j + step
-    
-  }
   
 }
 
@@ -1414,57 +1222,220 @@ local({
 # raw files without ms3 scans are renamed to "_pParse_mod.mgf" for consistency
 if(any(!contain_ms3)) {
   
-  invisible(
+  local({
     
     suppressWarnings({ 
       
       # find pparse output files
-      pparse_out_files <- list.files(path = "pparse_output", pattern = "_[A-Z]+FT\\.mgf")
+      pparse_out_files <- list.files(path = "pparse_output",
+                                     pattern = "_[A-Z]+FT\\.mgf")
       
       # pparse mgf files from raw files that do not contain MS3 scans
-      pparse_out_files <- pparse_out_files[gsub("_[A-Z]+FT\\.mgf", "", pparse_out_files) %in% gsub("\\.raw", "", raw_file_names[!contain_ms3])] 
+      pparse_out_files <- pparse_out_files[gsub("_[A-Z]+FT\\.mgf", "",
+                                                pparse_out_files) %in%
+                                           gsub("\\.raw", "",
+                                                raw_file_names[!contain_ms3])] 
       
       # rename
-      file.rename(paste0("pparse_output/", pparse_out_files), paste0("pparse_output/", gsub("(.+)_[A-Z]+FT\\.mgf$", "\\1_pParse_mod.mgf", pparse_out_files)))
+      file.rename(paste0("pparse_output/", pparse_out_files),
+                  paste0("pparse_output/", gsub("(.+)_[A-Z]+FT\\.mgf$",
+                                                "\\1_pParse_mod.mgf",
+                                                pparse_out_files)))
       
-    }
-    )
+    })
     
-  )
+  })
   
 }
 
 # names of pParse files
-pparse_out_files <- list.files(path = "pparse_output", pattern = "_[A-Z]+FT\\.mgf")
+pparse_out_files <- list.files(path = "pparse_output",
+                               pattern = "_[A-Z]+FT\\.mgf")
+pparse_mod_files <- paste0("pparse_output/",
+                           gsub("\\.raw$", "_pParse_mod.mgf",
+                                raw_file_names[contain_ms3]))
 
-
-if(any(contain_ms3) && !all(file.exists(paste0("pparse_output/", gsub("\\.raw$", "_pParse_mod.mgf", raw_file_names[contain_ms3]))))){
+if(any(contain_ms3) && !all(file.exists(pparse_mod_files))){
   
   # there are raw files that contain MS3 ions
-  # Merged MS2 and MS3 spectra are not available for all raw files containing MS3 spectra
-  
-  # set future options and parameters #####
-  options(future.globals.maxSize = +Inf)
-  
+  # Merged MS2 and MS3 spectra are not available
+  # for all raw files containing MS3 spectra
+
   # initiate workers
   plan(strategy = plan_strategy, workers = nr_threads, gc = TRUE)
   
   local({
     
     ptm_merge_ms <- proc.time() 
-    
     message("Merging MS2 and MS3 scans")
+    
+    # merge MS2 and MS3 spectra
+    merge_ms2_ms3 <- function(matrix_data, mgf_tab, 
+                              ion_match_tolerance,
+                              tolerance_unit){
+      
+      # Function combines ms2 and ms3 ion intensities
+      # Arguments:
+      # matrix_data = _Matrix.txt file from RawTools loaded as a data table
+      # mgf_tab = msconvert mgf file read in with readMgf function
+      # ion_match_tolerance = tolerance window for matching ions
+      # tolerance_unit = units of the tolerance window
+      #
+      # Value:
+      # !Function returns NULL, but it modifies mgf_tab in place!
+      
+      invisible(
+        
+        lapply(1:matrix_data[, .N], function(row_nr){
+          
+          scan_ms2 <- which(mgf_tab$scan_number == matrix_data$MS2ScanNumber[row_nr])[1]
+          scan_ms3 <- which(mgf_tab$scan_number == matrix_data$MS3ScanNumber[row_nr])[1]
+          
+          ms2 <- mgf_tab[scan_ms2, ions][[1]]
+          ms3 <- mgf_tab[scan_ms3, ions][[1]]
+          
+          if(length(ms2) == 0 || length(ms3) == 0) return(NULL)
+          
+          # first do a rough match by integer ion mz
+          not_matching <- which(!floor(ms3[, 1]) %in% c(floor(ms2[, 1]),
+                                                        (floor(ms2[, 1]) - 1),
+                                                        (floor(ms2[, 1]) + 1)))
+          
+          # combine spectra and stop if there are no matches
+          if(length(not_matching) == length(ms3[, 1])){
+            
+            ms2 <- rbind(ms2, ms3)
+            ms2 <- ms2[order(ms2[, 1]), ]
+            set(mgf_tab, i = scan_ms2, j = "ions", value = list(list(ms2)))
+            return(NULL)
+            
+          }
+          
+          # check remaining for overlap precisely
+          # indices of ms3 ions that might have a match to ms2 ions
+          probable_match <- setdiff(seq_along(ms3[, 1]), not_matching)
+          # mz values of ms3 ions that might have a match to ms2 ions
+          test_ms3_ions  <- ms3[probable_match, 1]
+          # mz differences between ms3 and ms2 ions
+          differences    <- abs(outer(test_ms3_ions, ms2[, 1], FUN = "-")) 
+          
+          # provide tolerance level for each ms3 ion
+          if(tolerance_unit == "ppm"){
+            
+            tolerances <- ion_match_tolerance*ms3[probable_match, 1]/10^6
+            
+          } else if(tolerance_unit == "Th"){
+            
+            tolerances <- rep(ion_match_tolerance,
+                              times = length(probable_match))
+            
+          } else {
+            
+            message("ion matching tolerance is 1Th")
+            tolerances <- rep(1, times = length(probable_match))
+            
+          }
+          
+          # which ions passed the tolerance cutoff
+          passed <- data.table(which(differences < tolerances |
+                                     dplyr::near(differences, tolerances),
+                                     arr.ind = TRUE))
+          
+          # combine spectra and stop if there are no ions
+          # that passed tolerance cutoff
+          if(passed[, .N] == 0) {
+            
+            ms2 <- rbind(ms2, ms3)
+            ms2 <- ms2[order(ms2[, 1]), ]
+            set(mgf_tab, i = scan_ms2, j = "ions", value = list(list(ms2)))
+            return(NULL)
+            
+          }
+          
+          # if one ms3 ion (row) corresponds to several ms2 ions,
+          # their indices will be saved as a list 
+          passed <- passed[, .(ms2_ind = list(c(col))), by = row]
+          
+          # one ms3 ion (row) -> one ms2 ion (ms2)
+          # decide which ions to merge
+          # ms2 column is a list, ms2[[1]] is required
+          
+          if(all(lengths(passed$ms2_ind) == 1)){
+            
+            passed[, best_ms2 := unlist(ms2_ind)]
+            
+          } else {
+            
+            passed[, best_ms2 := ms2_ind[[1]][1], by = "row"]
+            passed[lengths(ms2_ind) > 1,
+                   best_ms2 := ms2_ind[which.min(
+                     
+                     abs(ms2[ms2_ind[[1]]] - test_ms3_ions[row])
+                     
+                     )],
+                   by = "row"]
+            
+          }
+          
+          # one ms2 spectrum (row) -> one ms3 spectrum
+          # decide which ions to merge
+          # group by ms2 spectra
+          # note: ms3 column is a list, ms3[[1]] is required
+          passed2 <- passed[, .(ms3_ind = list(c(row))), by = best_ms2]
+          
+          if(all(lengths(passed2$ms3_ind) == 1)){
+            
+            passed2[, best_ms3 := unlist(ms3_ind)]
+            
+          } else {
+            
+            passed2[, best_ms3 := ms3_ind[[1]][1], by = "best_ms2"]
+            passed2[lengths(ms3_ind) > 1,
+                    best_ms3 := ms3_ind[which.min(
+                      
+                      abs(ms2[best_ms2] - test_ms3_ions[ms3_ind[[1]]])
+                      
+                      )], by = "best_ms2"]
+            
+          }
+          
+          
+          # get an actual index in ms3 (ms3_ind was pointing to probable_match)
+          passed2[, best_ms3 := probable_match[best_ms3], by = "best_ms2"]
+          
+          ms2[passed2[["best_ms2"]], 2] <- rowSums(
+            
+            matrix(c(ms2[passed2[["best_ms2"]], 2],
+                     ms3[passed2[["best_ms3"]], 2]), 
+                   byrow = FALSE, ncol = 2)
+            
+            )
+          # remove matched ms3 ions
+          ms3 <- ms3[-passed2[["best_ms3"]], ]
+          
+          # combine ms2 and not-matching ms3 ions
+          ms2 <- rbind(ms2, ms3) 
+          ms2 <- ms2[order(ms2[, 1]), ]
+          
+          # update mgf
+          set(mgf_tab, i = scan_ms2, j = "ions", value = list(list(ms2)))
+          return(NULL)
+          
+        })
+      )
+      
+    }
     
     # use future_lapply function for parallelization
     future_lapply(raw_file_names[contain_ms3], FUN = function(file_name){
       
-      cat(".")
+      file_name_core <- gsub("\\.raw", "", file_name)
       
       # read matrix file
       mtx <- fread(paste0("rawtools_output/", file_name, "_Matrix.txt"))
       
       # read mgf file (msconvert output)
-      mgf_tab <- readMgf(paste0("msconvert_output/", gsub("\\.raw", ".mgf", file_name)))
+      mgf_tab <- readMgf(paste0("msconvert_output/", file_name_core, ".mgf"))
       
       invisible(  
         merge_ms2_ms3(mgf_tab = mgf_tab,
@@ -1474,19 +1445,82 @@ if(any(contain_ms3) && !all(file.exists(paste0("pparse_output/", gsub("\\.raw$",
         
       )
       
-      # replace ion intensities in mgf_pParse by merged intensities mgf_tab
-      pparse_file <- pparse_out_files[gsub("_[A-Z]+FT\\.mgf", "", pparse_out_files) %in% gsub("\\.raw", "", file_name)]
-      pparse_file <- paste0("pparse_output/", pparse_file)
-      save(mgf_tab, file = paste0("pparse_output/", gsub("\\.raw$", "_merged.Rdata", file_name)))
-      change_ions_pParse(mgf_tab = mgf_tab, mgf_pParse = pparse_file, file_name = paste0("pparse_output/", gsub("\\.raw$", "_pParse_mod.mgf", file_name)))
+      save(mgf_tab, file = paste0("pparse_output/",
+                                  file_name_core, "_merged.Rdata"))
       
     })
     
-    plan(strategy = "sequential")
-    
-    if(verbose) proc.time() - ptm_merge_ms
+    if(verbose) print(proc.time() - ptm_merge_ms)
     
   })
+  
+  local({
+    
+    ptm_merge_ms <- proc.time() 
+    message("Update pParse mgf with merged spectra")
+    
+    # replace MS2 spectra in pParse by merged MS2/MS3 spectra
+    change_ions_pParse <- function(mgf_tab, mgf_pParse, file_name){
+      
+      # function keeps scan headers in the mgf from pParse
+      # it replaces the MS2 scans with merged MS2/MS3 scans
+      # save file as a new pdf
+      # Arguments:
+      # mgf_tab = mgf file in form of data table with merged MS2/MS3 scans
+      # (after merge_ms2_ms3 function)
+      # mgf_pParse = path to pParse mgf file
+      # file_name = file name for the output file
+      # step = how many spectra to process at once, needed for optimization
+      # Value
+      # The function returns NULL; mgf file is saved under file_name
+      
+      if(file.exists(file_name)) suppressWarnings(file.remove(file_name)) 
+      
+      mgf_pParse <- readMgfHeader(mgf_pParse)
+      mgf_pParse <- merge(mgf_pParse, mgf_tab[, c("scan_number", "ions")],
+                          by = "scan_number", all.x = TRUE)
+      
+      if(nrow(mgf_pParse) < 1) stop()
+      
+      mgf_pParse[, scan_id := 1:.N]
+      fwrite(list(unlist(
+        
+          mgf_pParse[, .(scan = list(
+          
+            c(unlist(scan_header),
+              paste(ions[[1]][, 1], ions[[1]][, 2], sep = " "),
+              "END IONS")
+          
+        )), by = scan_id]$scan
+      
+      )), file_name)
+      
+    }
+ 
+    future_lapply(raw_file_names[contain_ms3], FUN = function(file_name){
+    
+      file_name_core <- gsub("\\.raw", "", file_name)
+    
+      # replace ion intensities in mgf_pParse by merged intensities mgf_tab
+      pparse_files <- gsub("_[A-Z]+FT\\.mgf", "", pparse_out_files)
+      pparse_out <- pparse_out_files[pparse_files %in% file_name_core]
+      pparse_out <- paste0("pparse_output/", pparse_out)
+      pparse_mod <- paste0("pparse_output/", file_name_core, "_pParse_mod.mgf")
+      
+      # load mgf_tab
+      load(paste0("pparse_output/", file_name_core, "_merged.Rdata"))
+      
+      change_ions_pParse(mgf_tab = mgf_tab,
+                         mgf_pParse = pparse_out,
+                         file_name = pparse_mod)
+      
+    })
+    
+    if(verbose) print(proc.time() - ptm_merge_ms)
+    
+  })
+  
+  plan(strategy = "sequential")
   
 } else {
   
