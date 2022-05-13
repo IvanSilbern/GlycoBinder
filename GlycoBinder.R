@@ -277,64 +277,6 @@ aggregateIds <- function(list_ids, start_id){
   
 }
 
-# run external tools through the interface to the command line
-run_pglyco    <- function(file_name, out_dir, pglyco_config, pglyco_path){
-  
-  # Function runs pGlyco through a system call
-  # Arguments:
-  # file_name = name of the file
-  # out_idr = output directory
-  # pglyco_config = path to pglyco config file
-  # pglyco_path = path to pglyco executable
-  # Value:
-  # NULL
-  
-  ### change working directory to pglyco location
-  if(!dir.exists(pglyco_path)) stop("Cannot find folder location of pGlyco")
-  
-  wd <- getwd()
-  setwd(pglyco_path)
-  
-  ### change pglyco_config template
-  
-  # number of processes
-  pglyco_config[grepl("^process=", pglyco_config)]    <- paste0("process=1")
-  
-  # total number of files to analyze
-  pglyco_config[grepl("^spectrum_total=", pglyco_config)] <- paste0("spectrum_total=1")
-  
-  #output_dir
-  pglyco_config[grepl("^output_dir=", pglyco_config)] <- paste0("output_dir=", normalizePath(out_dir, winslash = "\\"))
-  
-  # file to process
-  pglyco_config <- pglyco_config[1:which(grepl("^spectrum_total=", pglyco_config))] # should be the last line before file paths
-  process_file  <- paste0(wd, "/", file_name)
-  if(!file.exists(process_file)) { # check if the file exists 
-    
-    writeLines("Not Finished", paste0(out_dir, "done.txt"))
-    stop(paste0("Cannot find file to process ", process_file))
-    
-  }
-  pglyco_config <- c(pglyco_config, paste0("file1", "=", process_file))
-  
-  # path to pglyco config file
-  pglyco_config_file <- paste0(out_dir, "/pGlyco_task.pglyco")
-  
-  # write pGlyco config file
-  writeLines(pglyco_config, pglyco_config_file)
-  
-  # prepare system calls
-  cmd_pglycodb  <- paste0('pGlycodb.exe ',         '"', pglyco_config_file, '"')
-  cmd_pglycofdr <- paste0('pGlycoFDR.exe', " -p ", '"', pglyco_config_file, '"', " -r ", '"', paste0(out_dir, "/pGlycoDB-GP.txt"), '"')
-  cmd_pglycopro <- paste0('pGlycoProInfer.exe ',   '"', pglyco_config_file, '"')
-  
-  shell(cmd = paste0(cmd_pglycodb, ' && ', cmd_pglycofdr, ' && ', cmd_pglycopro, ' & echo "done" >> ', '"', out_dir, '/done.txt', '"'), wait = FALSE, ignore.stdout = TRUE)
-  
-  # switch back to the original directory
-  setwd(wd)
-  
-}
-
 # add core fucosylation information
 add_corefuc <- function(df, scans){
   
@@ -851,10 +793,12 @@ local({
                                             pattern = " ", n = 2)[, 1]
   ff_headers    <<- gsub("^>", "", ff_headers)
   fasta.N2J     <- fasta
-  fasta.N2J[-ff_header_pos] <- gsub("N(.[STC])", "J\\1", fasta.N2J[-ff_header_pos])
+  fasta.N2J[-ff_header_pos] <- gsub("N(.[STC])", "J\\1",
+                                    fasta.N2J[-ff_header_pos])
   
   # write down the modified fasta file
-  writeLines(fasta.N2J, paste0(fasta.name, ".N2J")) # don't use 'fwrite' function: it causes problems with pGlyco
+  # don't use 'fwrite' function: it causes problems with pGlyco
+  writeLines(fasta.N2J, paste0(fasta.name, ".N2J")) 
 
 })
 ##### run RawTools #####
@@ -1531,144 +1475,244 @@ if(any(contain_ms3) && !all(file.exists(pparse_mod_files))){
 cat("\n")
 
 ##### run pGlyco #####
-
-if(!output_pglyco1_exists &&                 # output from the first pGlyco search does not exist
-   !(second_search && output_pglyco2_exists) # no need to process if second search is needed and
-   # the output from the second pGlyco search already exists
-){ 
+local({
   
-  local({
-    
-    ptm_pglyco <- proc.time() 
+  processPGlyco <- function(raw_file_names,
+                            fasta.name,
+                            nr_threads,
+                            wd,
+                            reporter_ion,
+                            pglyco_output = "pGlycoDB-GP-FDR-Pro.txt"){
     
     # create output folder
-    suppressWarnings(
+    if(!dir.exists("pglyco_output\\")) dir.create("pglyco_output\\")
+    
+    # auxiliary functions
+    run_pglyco   <- function(file_name, out_dir, wd,
+                             pglyco_config, pglyco_path){
       
-      dir.create("pglyco_output\\")
+      # Function runs pGlyco through a system call
+      # Arguments:
+      # file_name = name of the file
+      # out_idr = output directory
+      # wd = working directory (location of the raw files)
+      # pglyco_config = path to pglyco config file
+      # pglyco_path = path to pglyco executable
+      # Value:
+      # NULL
       
-    )
-    
-    message("\n Run pGlyco ")
-    
-    # find location of pglyco executable
-    
-    pglyco_path <- system2("where", args = "pglyco", stdout = TRUE)
-    pglyco_path <- file.path(gsub("pGlyco\\.exe", "", pglyco_path))[[1]]
-    
-    if(!dir.exists(pglyco_path)){ # another way to find pGlyco
+      ### change working directory to pglyco location
+      if(!dir.exists(pglyco_path)) stop("Cannot find folder location of pGlyco")
+      setwd(pglyco_path)
       
-      pglyco_path <- shell("set path", intern = TRUE)
-      pglyco_path <- unlist(strsplit(pglyco_path, ";"))
-      pglyco_path <- pglyco_path[grepl("p[Gg]lyco", pglyco_path)][[1]]
+      ### change pglyco_config template
+      
+      # number of processes
+      pglyco_config[grepl("^process=", pglyco_config)] <- paste0("process=1")
+      
+      # total number of files to analyze
+      spectrum_total_line <- which(grepl("^spectrum_total=", pglyco_config))
+      pglyco_config[spectrum_total_line] <- paste0("spectrum_total=1")
+      
+      #output_dir
+      out_dir <- normalizePath(out_dir, winslash = "\\")
+      pglyco_config[grepl("^output_dir=", pglyco_config)] <- paste0("output_dir=",
+                                                                    out_dir)
+      
+      # file to process
+      # spectrum_total line should be the last line before file paths
+      spectrum_total_line <- which(grepl("^spectrum_total=", pglyco_config))
+      pglyco_config <- pglyco_config[1:spectrum_total_line] 
+      process_file  <- paste0(wd, "/", file_name)
+      if(!file.exists(process_file)) { # check if the file exists 
+        
+        writeLines("Not Finished", paste0(out_dir, "done.txt"))
+        stop(paste0("Cannot find file to process ", process_file))
+        
+      }
+      pglyco_config <- c(pglyco_config, paste0("file1", "=", process_file))
+      
+      # path to pglyco config file
+      pglyco_config_file <- paste0(out_dir, "/pGlyco_task.pglyco")
+      
+      # write pGlyco config file
+      writeLines(pglyco_config, pglyco_config_file)
+      
+      # prepare system calls
+      cmd_pglycodb  <- paste0('pGlycodb.exe ', '"', pglyco_config_file, '"')
+      cmd_pglycofdr <- paste0('pGlycoFDR.exe', " -p ", '"',
+                              pglyco_config_file, '"', " -r ", '"',
+                              paste0(out_dir, "/pGlycoDB-GP.txt"), '"')
+      cmd_pglycopro <- paste0('pGlycoProInfer.exe ',
+                              '"', pglyco_config_file, '"')
+      
+      shell(cmd = paste0(cmd_pglycodb, ' && ',
+                         cmd_pglycofdr, ' && ',
+                         cmd_pglycopro, ' & echo "done" >> ',
+                         '"', out_dir, '/done.txt', '"'),
+            wait = FALSE, ignore.stdout = TRUE)
+      
+      # switch back to the original directory
+      setwd(wd)
       
     }
     
-    if(!dir.exists(pglyco_path)) stop("Cannot find location folder of pGlyco.exe. Please check if the path is set in the environmental variables.")
+    find_pglyco  <- function(){
+      
+      pglyco_path <- system2("where", args = "pglyco", stdout = TRUE)
+      pglyco_path <- file.path(gsub("pGlyco\\.exe", "", pglyco_path))[[1]]
+      
+      if(!dir.exists(pglyco_path)){ # another way to find pGlyco
+        
+        pglyco_path <- shell("set path", intern = TRUE)
+        pglyco_path <- unlist(strsplit(pglyco_path, ";"))
+        pglyco_path <- pglyco_path[grepl("p[Gg]lyco", pglyco_path)][[1]]
+        
+      }
+      
+      return(pglyco_path)
+      
+    }
     
-    # check if configuration file already exists. If not, modify the template accordingly
-    
-    if(any(grepl("^pGlyco_task.*\\.pglyco$", list.files()))){ #check if configuration file already exists
+    configPGlyco <- function(pglyco_task = "pGlyco_task.pglyco",
+                             pglyco_settings = "default",
+                             fasta.name,
+                             pglyco_version,
+                             nr_threads,
+                             wd,
+                             reporter_ion,
+                             file_names){
       
-      pglyco_config_file <- list.files(pattern = "^[Pp][Gg]lyco_task\\.[Pp][Gg][Ll][Yy][Cc][Oo]$")
-      pglyco_config <- readLines(pglyco_config_file)
-      
-      #fasta
-      pglyco_config[grepl("^fasta=", pglyco_config)]      <- paste0("fasta=", wd,  "/", fasta.name, ".N2J")
-      
-      writeLines(pglyco_config, "pGlyco_task.pglyco")
-      
-      
-    } else {
-      
-      message("pGlyco configuration was not provided. Use default settings")
-      
-      pglyco_config <- pglyco_config_default
-      
-      ### modify configuration file
+      pglyco_config <- readLines(pglyco_task)
       
       # pglyco version
-      setwd(pglyco_path)
-      pglyco_version <- system2("pglycodb", args = "--version", stdout = TRUE)
-      pglyco_config[grepl("^pGlyco_version", pglyco_config)] <- paste0("pGlyco_version=", pglyco_version)
-      setwd(wd)
+      pglyco_version <- paste0("pGlyco_version=", pglyco_version)
+      pglyco_config[grepl("^pGlyco_version", pglyco_config)] <- pglyco_version
       
-      # number of processes
-      pglyco_config[grepl("^process=", pglyco_config)]    <- paste0("process=", nr_threads)
+      # fasta file
+      fasta.name <- paste0("fasta=", wd,  "/", fasta.name, ".N2J")
+      pglyco_config[grepl("^fasta=", pglyco_config)] <- fasta.name
       
-      #output_dir
-      pglyco_config[grepl("^output_dir=", pglyco_config)] <- paste0("output_dir=", normalizePath(paste0(wd, "/pglyco_output"), winslash = "\\"))
+      #number of threads
+      nr_threads <- paste0("process=", nr_threads)
+      pglyco_config[grepl("^process=", pglyco_config)] <- nr_threads
       
-      #fasta
-      pglyco_config[grepl("^fasta=", pglyco_config)]      <- paste0("fasta=", wd,  "/", fasta.name, ".N2J")
-      
-      #fixed modifications
-      
-      # fixed modification should match the reporter_ion_type parameter for RawTools
-      if(reporter_ion != "not_labeled"){
+      # output directory
+      output_dir <- paste0("output_dir=", normalizePath(
         
-        if(reporter_ion == "TMT0"){
+        paste0(wd, "/pglyco_output"), winslash = "\\")
+        
+      )
+      pglyco_config[grepl("^output_dir=", pglyco_config)] <- output_dir
+      
+      if(pglyco_settings == "default"){
+        
+        # fixed modifications should match
+        # the reporter_ion_type parameter for RawTools
+        if(reporter_ion != "not_labeled"){
           
-          fixed_mod_reporter <- "TMT"
+          if(reporter_ion == "TMT0"){
+            
+            fixed_mod_reporter <- "TMT"
+            
+          } else {
+            
+            fixed_mod_reporter <- paste0(reporter_ion, "plex")
+            
+          }
           
-        } else {
-          
-          fixed_mod_reporter <- paste0(reporter_ion, "plex")
+          pglyco_config[grepl("^fix2=", pglyco_config)] <- paste0("fix2=", fixed_mod_reporter, "[K]")
+          pglyco_config[grepl("^fix3=", pglyco_config)] <- paste0("fix3=", fixed_mod_reporter, "[AnyN-term]")
           
         }
         
-        pglyco_config[grepl("^fix2=", pglyco_config)]       <- paste0("fix2=", fixed_mod_reporter, "[K]")
-        pglyco_config[grepl("^fix3=", pglyco_config)]       <- paste0("fix3=", fixed_mod_reporter, "[AnyN-term]")
-        
       }
-      # total number of files to analyze
       
-      pglyco_config[grepl("^spectrum_total=", pglyco_config)] <- paste0("spectrum_total=", length(raw_file_names))
+      # total number of files to analyze
+      spectrum_total <- paste0("spectrum_total=", length(raw_file_names))
+      pglyco_config[grepl("^spectrum_total=", pglyco_config)] <- spectrum_total
       
       # add paths to files to analyze
+      # should be the last line before file paths
+      last_line <- which(grepl("^spectrum_total=", pglyco_config))
+      pglyco_config <- pglyco_config[1:last_line]
       
-      pglyco_config <- pglyco_config[1:which(grepl("^spectrum_total=", pglyco_config))] # should be the last line before file paths
-      for(i in seq_along(raw_file_names)){
-        
-        pglyco_config <- c(pglyco_config, paste0("file", i, "=", wd, "/pparse_output/", gsub("\\.raw$", "_pParse_mod.mgf", raw_file_names[i])))  
-        
-      }
+      file_names <- paste0("file", seq_along(file_names), "=", wd,
+                           "/pparse_output/", file_names)
+      pglyco_config <- c(pglyco_config, file_names)  
       
-      writeLines(pglyco_config, "pGlyco_task.pglyco")
+      return(pglyco_config)
       
     }
     
-    # path to pglyco config file
-    pglyco_config_file <- paste0(wd, "/", list.files(pattern = "pGlyco_task\\.pglyco")[1])
+   
+    # find pglyco and check its version
+    pglyco_path <- find_pglyco()
+    
+    # find location of pglyco executable
+    setwd(pglyco_path)
+    pglyco_version <- system2("pglycodb", args = "--version", stdout = TRUE)
+    setwd(wd)
+    if(verbose) message("pGlyco version ", pglyco_version)
+    
+    # check if configuration file already exists.
+    # If not, modify the template accordingly
+    pglyco_settings <- "custom"
+    if(!file.exists("pGlyco_task.pglyco")){
+      
+      message("pGlyco config file not found. Use default pGlyco settings")
+      pglyco_settings <- "default"
+      writeLines(pglyco_config_default, "pGlyco_task.pglyco")
+      
+    }
+    pglyco_config <- configPGlyco(pglyco_task = "pGlyco_task.pglyco",
+                                  pglyco_settings = pglyco_settings,
+                                  fasta.name = fasta.name,
+                                  pglyco_version = pglyco_version,
+                                  nr_threads = nr_threads,
+                                  wd = wd,
+                                  reporter_ion = reporter_ion,
+                                  file_names = gsub(".raw$", "",
+                                                    raw_file_names))
+    writeLines(pglyco_config, "pGlyco_task.pglyco")
     
     # number of files to process
     nr_files <- length(raw_file_names)
     
     # file names to process
-    files_to_process <- paste0("pparse_output/", gsub("\\.raw$", "_pParse_mod.mgf", raw_file_names))
+    files_to_process <- paste0("pparse_output/",
+                               gsub("\\.raw$",
+                                    "_pParse_mod.mgf",
+                                    raw_file_names))
     
-    # maximum iterations given the number of available threads and number of files to process
+    # maximum iterations given the number of
+    # available threads and number of files to process
     max_iterations <- ceiling(nr_files/nr_threads)
-    if(is.na(max_iterations) || max_iterations < 1) stop("Wrong number of max_iterations")
-    
-    pglyco_config <- readLines(pglyco_config_file)
     
     processes <- 0
     for(i in 1:max_iterations){
       
       processes <- (max(processes) + 1) : min(i*nr_threads, nr_files)
       
-      if(verbose) message("pGlyco processes\n", paste(files_to_process[processes], collapse = "\n"))
+      if(verbose) message("pGlyco processes\n",
+                          paste(files_to_process[processes], collapse = "\n"))
       
       for(j in processes){
         
         out_dir <- paste0(wd, "/pglyco_output/pglyco_process", j)
         if(!dir.exists(out_dir)) dir.create(out_dir, showWarnings = verbose)
         
-        run_pglyco(file_name = files_to_process[j], out_dir = out_dir, pglyco_config = pglyco_config, pglyco_path = pglyco_path)
+        run_pglyco(file_name = files_to_process[j],
+                   out_dir = out_dir,
+                   wd = wd,
+                   pglyco_config = pglyco_config,
+                   pglyco_path = pglyco_path)
         
       }
       
-      while(any(!file.exists(paste0(wd,"/pglyco_output/pglyco_process", processes, "/done.txt")))){
+      done_file <- paste0(wd,"/pglyco_output/pglyco_process",
+                          processes, "/done.txt")
+      while(any(!file.exists(done_file))){
         
         #if(verbose) {
         
@@ -1686,14 +1730,16 @@ if(!output_pglyco1_exists &&                 # output from the first pGlyco sear
     df_pglyco <- data.table()
     for(i in seq_along(raw_file_names)){
       
-      if(!file.exists(paste0("pglyco_output/pglyco_process", i, "/pGlycoDB-GP-FDR-Pro.txt"))){
+      pglyco_file <- paste0("pglyco_output/pglyco_process", i,
+                            "/pGlycoDB-GP-FDR-Pro.txt")
+      if(!file.exists(pglyco_file)){
         
         message("No pGlyco result for ", raw_file_names[i])
         next
         
       }
       
-      temp <- fread(paste0("pglyco_output/pglyco_process", i, "/pGlycoDB-GP-FDR-Pro.txt"))
+      temp <- fread(pglyco_file)
       df_pglyco <- rbind(df_pglyco, temp)
       
       #remove the label "done"
@@ -1704,248 +1750,112 @@ if(!output_pglyco1_exists &&                 # output from the first pGlyco sear
     # check the length of df_pglyco
     if(nrow(df_pglyco) == 0) stop("No pGlyco results")
     
-    fwrite(df_pglyco, "pglyco_output/pGlycoDB-GP-FDR-Pro.txt", sep = "\t", quote = FALSE, row.names = FALSE)
+    fwrite(df_pglyco, paste0("pglyco_output/", pglyco_output),
+           sep = "\t", quote = FALSE, row.names = FALSE)
     
-    if(!report_intermediate_files && file.exists("pGlycoDB-GP-FDR-Pro.txt")){
+    if(!report_intermediate_files &&
+       file.exists(paste0("pglyco_output/", pglyco_output))){
       
       list_dirs <- list.dirs(path = "pglyco_output/", recursive = FALSE)
       to_delete <- list_dirs[grepl("pglyco_process[0-9]+", list_dirs)]
       unlink(to_delete, recursive = TRUE)
       
-      
     }
     
+    return(NULL)
     
-    if(verbose) proc.time() - ptm_pglyco
+  }
+  
+  if(!output_pglyco1_exists &&                 
+     !(second_search && output_pglyco2_exists)
+     
+     # Process if:
+     # output from the first pGlyco search does not exist AND 
+     # there is no output from the second pGlyco search 
+     # (or the second search is not needed)
+     
+  ){ 
     
-  })
-  
-  
-} else {
-  
-  message("Found -Pro.txt file. Skip pGlyco processing")
-  
-}
-
-##### second pGlyco search #####
-
-# check that second pglyco output is present
-if(second_search){
-  
-  if(!output_pglyco2_exists){ # check if pGlyco result already exists
+    ptm_pglyco <- proc.time() 
+    message("\n Run pGlyco ")
     
-    local({
-      
-      ptm_pglyco <- proc.time()  
-      
-      # find pGlyco result file from the first search
-      pglyco_out   <- list.files(path = "pglyco_output", pattern = "-Pro.txt$", full.names = TRUE)
-      
-      if(length(pglyco_out) == 0) stop(paste0("Cannot find pGlyco output files in the specified directory"))
-      if(verbose) message(paste0("Found pGlyco files:\n", paste(pglyco_out, collapse = "\n")))
-      if(length(pglyco_out) > 1 && verbose) message("Found several pGlyco output files - only the first one will be used ", pglyco_out[1])
-      pglyco_out <- pglyco_out[1]
-      
-      pglyco_file <- fread(pglyco_out, header = T)
-      pglyco_file <- pglyco_file[TotalFDR < (pglyco_fdr_threshold)]
-      proteins    <- unique(unlist(stringr::str_split(pglyco_file[["Proteins"]], "/")))
-      proteins    <- proteins[!grepl("^REV_", proteins)]
-      
-      if(!file.exists(gsub("(.+)\\.[Ff][Aa][Ss][Tt][Aa]$", "\\1_sub.fasta.N2J", fasta.name))){
-        
-        ff_n2j <- fread(paste0(fasta.name, ".N2J"), sep = NULL, header = FALSE)[[1]]
-        take   <- ff_headers %in% proteins
-        start  <- ff_header_pos[which(take)]
-        end    <- ff_header_pos[which(take) + 1] - 1 #line where starts the next header - 1
-        end[is.na(end)] <- length(ff_n2j)
-        
-        writeLines(unlist(Map(function(start, end) ff_n2j[start:end], start = start, end = end)), gsub("(.+)\\.fasta$", "\\1_sub.fasta.N2J", fasta.name))
-        
-      }
-      
-      message("\n Run second pGlyco search ")
-      
-      # find location of pglyco
-      
-      pglyco_path <- system2("where", args = "pglyco", stdout = TRUE)
-      pglyco_path <- file.path(gsub("pGlyco\\.exe", "", pglyco_path))[[1]]
-      
-      if(!dir.exists(pglyco_path)){ # another way to find pGlyco
-        
-        pglyco_path <- shell("set path", intern = TRUE)
-        pglyco_path <- unlist(strsplit(pglyco_path, ";"))
-        pglyco_path <- pglyco_path[grepl("p[Gg]lyco", pglyco_path)][[1]]
-        
-      }
-      
-      if(!dir.exists(pglyco_path)) stop("Cannot find location folder of pGlyco.exe. Please check if the path is set in the environmental variables.")               
-      
-      # check if configuration file already exists. If not, modify the template accordingly
-      
-      if(any(grepl("^pGlyco_task.*\\.pglyco$", list.files()))){ #check if configuration file already exists
-        
-        pglyco_config_file <- list.files(pattern = "^[Pp][Gg]lyco_task\\.[Pp][Gg][Ll][Yy][Cc][Oo]$")
-        
-        pglyco_config <- readLines(pglyco_config_file)
-        
-        # change fasta file name to the name of the reduced fasta file
-        pglyco_config[grepl("^fasta=", pglyco_config)]      <- paste0("fasta=", wd,  "/", gsub("(.+)\\.fasta$", "\\1_sub.fasta.N2J", fasta.name))
-        
-        writeLines(pglyco_config, "pGlyco_task.pglyco")
-        
-      } else {
-        
-        if(verbose) message("pGlyco configuration was not provided. Use default settings")
-        
-        pglyco_config <- pglyco_config_default
-        
-        ### modify configuration file
-        
-        # pglyco version
-        setwd(pglyco_path)
-        pglyco_version <- system2("pglycodb", args = "--version", stdout = TRUE)
-        pglyco_config[grepl("^pGlyco_version", pglyco_config)] <- paste0("pGlyco_version=", pglyco_version)
-        setwd(wd)
-        
-        # number of processes
-        pglyco_config[grepl("^process=", pglyco_config)]   <- paste0("process=", nr_threads)
-        
-        #output_dir
-        pglyco_config[grepl("^output_dir=", pglyco_config)] <- paste0("output_dir=", normalizePath(wd, winslash = "\\"))
-        
-        #fasta
-        pglyco_config[grepl("^fasta=", pglyco_config)]      <- paste0("fasta=", wd,  "/", gsub("(.+)\\.fasta$", "\\1_sub.fasta.N2J", fasta.name))
-        
-        #fixed modifications
-        
-        # fixed modification should match the reporter_ion_type parameter for RawTools
-        if(reporter_ion != "not_labeled"){
-          
-          if(reporter_ion == "TMT0"){
-            
-            fixed_mod_reporter <- "TMT"
-            
-          } else {
-            
-            fixed_mod_reporter <- paste0(reporter_ion, "plex")
-            
-          }
-          
-          pglyco_config[grepl("^fix2=", pglyco_config)]       <- paste0("fix2=", fixed_mod_reporter, "[K]")
-          pglyco_config[grepl("^fix3=", pglyco_config)]       <- paste0("fix3=", fixed_mod_reporter, "[AnyN-term]")
-          
-        }
-        
-        # total number of files to analyze
-        
-        pglyco_config[grepl("^spectrum_total=", pglyco_config)] <- paste0("spectrum_total=", length(raw_file_names))
-        
-        # add paths to files to analyze
-        
-        pglyco_config <- pglyco_config[1:which(grepl("^spectrum_total=", pglyco_config))] # should be the last line before file paths
-        for(i in seq_along(raw_file_names)){
-          
-          pglyco_config <- c(pglyco_config, paste0("file", i, "=", wd, "/", gsub("\\.raw$", "_pParse_mod.mgf", raw_file_names[i])))  
-          
-        }
-        
-        writeLines(pglyco_config, "pGlyco_task.pglyco")
-        
-      }
-      
-      # path to pglyco config file
-      pglyco_config_file <- paste0(wd, "/", list.files(pattern = "pGlyco_task.*\\.pglyco")[1])
-      
-      # number of files to process
-      nr_files <- length(raw_file_names)
-      
-      # file names to process
-      files_to_process <- paste0("pparse_output/", gsub("\\.raw$", "_pParse_mod.mgf", raw_file_names))
-      
-      # maximum iterations given the number of available threads and number of files to process
-      max_iterations <- ceiling(nr_files/nr_threads)
-      if(is.na(max_iterations) || max_iterations < 1) stop("Wrong number of max_iterations")
-      
-      pglyco_config <- readLines(pglyco_config_file)
-      
-      processes <- 0
-      for(i in 1:max_iterations){
-        
-        processes <- (max(processes) + 1) : min(i*nr_threads, nr_files)
-        
-        if(verbose) message("pGlyco processes\n", paste(files_to_process[processes], collapse = "\n"))
-        
-        for(j in processes){
-          
-          out_dir <- paste0(wd, "/pglyco_output/pglyco_process", j)
-          dir.create(out_dir, showWarnings = verbose)
-          
-          run_pglyco(file_name = files_to_process[j], out_dir = out_dir, pglyco_config = pglyco_config, pglyco_path = pglyco_path)
-          
-        }
-        
-        while(any(!file.exists(paste0(wd,"/pglyco_output/pglyco_process", processes, "/done.txt")))){
-          
-          #if(verbose) {
-          
-          cat(".")
-          
-          #} 
-          
-          Sys.sleep(2)
-          
-        }
-        cat("\n")
-        
-      }
-      
-      df_pglyco <- data.table()
-      for(i in seq_along(raw_file_names)){
-        
-        if(!file.exists(paste0("pglyco_output/pglyco_process", i, "/pGlycoDB-GP-FDR-Pro.txt"))){
-          
-          message("No pGlyco result for ", raw_file_names[i])
-          next
-          
-        }
-        
-        temp <- fread(paste0("pglyco_output/pglyco_process", i, "/pGlycoDB-GP-FDR-Pro.txt"))
-        df_pglyco <- rbind(df_pglyco, temp)
-        
-        #remove the label "done"
-        file.remove(paste0("pglyco_output/pglyco_process", i, "/done.txt"))
-        
-      }
-      
-      # check the length of df_pglyco
-      if(nrow(df_pglyco) == 0) stop("No pGlyco results")
-      
-      # write combined pGlyco results
-      fwrite(df_pglyco, "pglyco_output/pGlycoDB-GP-FDR-Pro2.txt", sep = "\t", quote = FALSE, row.names = FALSE)
-      
-      if(!report_intermediate_files && file.exists("pglyco_output/pGlycoDB-GP-FDR-Pro2.txt")){
-        
-        list_dirs <- list.dirs("pglyco_output", recursive = FALSE)
-        to_delete <- list_dirs[grepl("pglyco_process[0-9]+", list_dirs)]
-        unlink(to_delete, recursive = TRUE)
-        
-        
-      }
-      
-      
-      if(verbose) proc.time() - ptm_pglyco
-      
-      
-      
-    })
+    processPGlyco(raw_file_names = raw_file_names,
+                  fasta.name = fasta.name,
+                  nr_threads = nr_threads,
+                  wd = wd,
+                  reporter_ion = reporter_ion)
+    
+    if(verbose) print(proc.time() - ptm_pglyco)
     
   } else {
     
-    message("Found -Pro2.txt file. Skip pGlyco processing")
+    message("Found -Pro.txt file. Skip pGlyco processing")
     
-  }  
+  }
   
-}  
+  ##### second pGlyco search #####
+  
+  # check that second pglyco output is present
+  if(second_search){
+    
+    if(!output_pglyco2_exists){ # check if pGlyco result already exists
+      
+      ptm_pglyco <- proc.time()  
+      message("\n Run second pGlyco search ")
+        
+      # find pGlyco result file from the first search
+      pglyco_out   <- list.files(path = "pglyco_output",
+                                 pattern = "-Pro.txt$", full.names = TRUE)
+        
+      if(length(pglyco_out) == 0) stop("Cannot find pGlyco output files")
+      if(verbose) message(paste0("Found pGlyco files:\n",
+                                 paste(pglyco_out, collapse = "\n")))
+        
+      pglyco_file <- data.table()
+      for(i in seq_along(pglyco_out)){
+          
+        pglyco_file <- rbind(pglyco_file, fread(pglyco_out[i], header = TRUE))
+          
+      }
+        
+      # select glycoproteins
+      pglyco_file <- pglyco_file[TotalFDR < (pglyco_fdr_threshold)]
+      proteins <- unique(unlist(stringr::str_split(pglyco_file$Proteins, "/")))
+      proteins <- proteins[!grepl("^REV_", proteins)]
+        
+      # prepare fasta file
+      ff_n2j <- fread(paste0(fasta.name, ".N2J"),
+                      sep = NULL, header = FALSE)[[1]]
+      take   <- ff_headers %in% proteins
+      start  <- ff_header_pos[which(take)]
+      end    <- start + 1
+          
+      fasta.name.sub <- gsub("(.+)\\.[Ff][Aa][Ss][Tt][Aa]$",
+                             "\\1_sub.fasta", fasta.name)
+      writeLines(unlist(
+        
+        Map(function(start, end) ff_n2j[start:end], start = start, end = end)
+        
+        ), paste0(fasta.name.sub, ".N2J"))
+        
+      processPGlyco(raw_file_names = raw_file_names,
+                    fasta.name = fasta.name.sub,
+                    nr_threads = nr_threads,
+                    wd = wd,
+                    reporter_ion = reporter_ion,
+                    pglyco_output = "pGlycoDB-GP-FDR-Pro2.txt")
+        
+      if(verbose) print(proc.time() - ptm_pglyco)
+
+   } else {
+      
+     message("Found -Pro2.txt file. Skip pGlyco processing")
+      
+   }  
+    
+  }
+  
+})
 
 ##### combine pglyco output and RawTools output #####
 local({
