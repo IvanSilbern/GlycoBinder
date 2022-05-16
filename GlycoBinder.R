@@ -674,7 +674,9 @@ args <- (commandArgs(TRUE))
 # log information
 message("Provided arguments:\n",
         paste(as.character(args), collapse = "\n"), "\n")
-writeLog(log_gb, "Glycobinder started with arguments:", paste(as.character(args), collapse = " "))
+writeLog(log_gb,
+         "***** Glycobinder started with arguments: *****",
+         paste(as.character(args), collapse = " "))
 
 # working directory
 wd <- collectArgs("--wd", args, default = getwd(),
@@ -748,7 +750,7 @@ if(any(grepl("--skip_marker_ions", args))) skip_marker_ions <- TRUE
 local({
   
   ptm <- proc.time() 
-  message("\n Prepare Fasta File")
+  message("\n ***** Prepare Fasta File ***** \n")
   
   # find fasta file
   fasta_files <- list.files(pattern = "\\.[Ff][Aa][Ss][Tt][Aa]$")
@@ -810,6 +812,10 @@ local({
   writeLines(fasta.N2J, paste0(fasta.name, ".N2J")) 
   
   if(verbose) print(proc.time() - ptm)
+  writeLog(log_gb, new1 = paste0("Prepare Fasta File"),
+           new2 = c(paste0("user: ", round((proc.time() - ptm)[1], 4)),
+                    paste0("system: ", round((proc.time() - ptm)[2], 4)),
+                    paste0("elapsed: ", round((proc.time() - ptm)[3], 4))))
 
 })
 ##### run RawTools #####
@@ -819,6 +825,9 @@ if(!all(file.exists(paste0("rawtools_output\\",
                            "_Matrix.txt")))) {
   
   local({
+    
+    ptm <- proc.time()
+    message("\n ***** Run RawTools ***** \n")
     
     # output folder
     if(!dir.exists("rawtools_output")) dir.create("rawtools_output")
@@ -834,12 +843,17 @@ if(!all(file.exists(paste0("rawtools_output\\",
       RawTools_args <- c( RawTools_args, '-q', '-r', reporter_ion)
       
     }
+    if(verbose) message("Arguments: ", paste(RawTools_args, collapse = " "))
     
-    if(verbose) message(paste0("Running Rawtools with arguments ",
-                        paste(RawTools_args, collapse = " ")))
     
     # run
     system2(command = "RawTools", args = RawTools_args, wait = TRUE)
+    
+    if(verbose) print(proc.time() - ptm)
+    writeLog(log_gb, new1 = paste0("Run RawTools"),
+             new2 = c(paste0("user: ", round((proc.time() - ptm)[1], 4)),
+                      paste0("system: ", round((proc.time() - ptm)[2], 4)),
+                      paste0("elapsed: ", round((proc.time() - ptm)[3], 4))))
     
   })
   
@@ -917,7 +931,8 @@ if(any(contain_ms3) && # there are files with ms3 spectra
     
     if(!dir.exists("msconvert_output"))  dir.create("msconvert_output")
     
-    message("Run msconvert\n")
+    ptm <- proc.time()
+    message("\n ***** Run msconvert ***** \n")
     
     run_msconvert <- function(file_name, out_dir){
       
@@ -993,6 +1008,12 @@ if(any(contain_ms3) && # there are files with ms3 spectra
     list_dirs <- list.dirs(path = "msconvert_output", recursive = FALSE)
     to_delete <- list_dirs[grepl("msconvert_process[0-9]+", list_dirs)]
     unlink(to_delete, recursive = TRUE)
+    
+    if(verbose) print(proc.time() - ptm)
+    writeLog(log_gb, new1 = paste0("Run msconvert"),
+             new2 = c(paste0("user: ", round((proc.time() - ptm)[1], 4)),
+                      paste0("system: ", round((proc.time() - ptm)[2], 4)),
+                      paste0("elapsed: ", round((proc.time() - ptm)[3], 4))))
     
   })
   
@@ -1135,6 +1156,9 @@ if(!output_pparse_exists && !output_pparsemod_exists){
 # check pParse output
 
 local({
+  
+  ptm <- proc.time()
+  message("\n ***** run pParse ***** \n")
     
   pparse_out <- list.files(path = "pparse_output", pattern = "_[A-Z]+FT\\.mgf")
   pparse_out <- gsub("_[A-Z]+FT\\.mgf", "", pparse_out)
@@ -1169,6 +1193,12 @@ local({
   
   if(verbose) message("Found .mgf files\n",
                       paste(list.files(pattern = "\\.mgf$"), collapse = "\n"))
+  
+  if(verbose) print(proc.time() - ptm)
+  writeLog(log_gb, new1 = paste0("run pParse"),
+           new2 = c(paste0("user: ", round((proc.time() - ptm)[1], 4)),
+                    paste0("system: ", round((proc.time() - ptm)[2], 4)),
+                    paste0("elapsed: ", round((proc.time() - ptm)[3], 4))))
 
 })
 
@@ -1211,6 +1241,9 @@ pparse_mod_files <- paste0("pparse_output/",
                                 raw_file_names[contain_ms3]))
 
 if(any(contain_ms3) && !all(file.exists(pparse_mod_files))){
+  
+  ptm <- proc.time()
+  message("\n ***** Combine MS2 and MS3 spectra ***** \n")
   
   # there are raw files that contain MS3 ions
   # Merged MS2 and MS3 spectra are not available
@@ -1476,6 +1509,12 @@ if(any(contain_ms3) && !all(file.exists(pparse_mod_files))){
   })
   
   plan(strategy = "sequential")
+  
+  if(verbose) print(proc.time() - ptm)
+  writeLog(log_gb, new1 = paste0("Combine MS2 and MS3 spectra"),
+           new2 = c(paste0("user: ", round((proc.time() - ptm)[1], 4)),
+                    paste0("system: ", round((proc.time() - ptm)[2], 4)),
+                    paste0("elapsed: ", round((proc.time() - ptm)[3], 4))))
   
 } else {
   
@@ -1787,8 +1826,8 @@ local({
      
   ){ 
     
-    ptm_pglyco <- proc.time() 
-    message("\n Run pGlyco ")
+    ptm <- proc.time() 
+    message("\n ***** Run pGlyco ***** \n")
     
     processPGlyco(raw_file_names = raw_file_names,
                   fasta.name = fasta.name,
@@ -1796,7 +1835,11 @@ local({
                   wd = wd,
                   reporter_ion = reporter_ion)
     
-    if(verbose) print(proc.time() - ptm_pglyco)
+    if(verbose) print(proc.time() - ptm)
+    writeLog(log_gb, new1 = paste0("Run pGlyco"),
+             new2 = c(paste0("user: ", round((proc.time() - ptm)[1], 4)),
+                      paste0("system: ", round((proc.time() - ptm)[2], 4)),
+                      paste0("elapsed: ", round((proc.time() - ptm)[3], 4))))
     
   } else {
     
@@ -1811,8 +1854,8 @@ local({
     
     if(!output_pglyco2_exists){ # check if pGlyco result already exists
       
-      ptm_pglyco <- proc.time()  
-      message("\n Run second pGlyco search ")
+      ptm <- proc.time()  
+      message("\n ***** Run second pGlyco search ***** \n")
         
       # find pGlyco result file from the first search
       pglyco_out   <- list.files(path = "pglyco_output",
@@ -1856,7 +1899,11 @@ local({
                     reporter_ion = reporter_ion,
                     pglyco_output = "pGlycoDB-GP-FDR-Pro2.txt")
         
-      if(verbose) print(proc.time() - ptm_pglyco)
+      if(verbose) print(proc.time() - ptm)
+      writeLog(log_gb, new1 = paste0("Run second pGlyco search"),
+               new2 = c(paste0("user: ", round((proc.time() - ptm)[1], 4)),
+                        paste0("system: ", round((proc.time() - ptm)[2], 4)),
+                        paste0("elapsed: ", round((proc.time() - ptm)[3], 4))))
 
    } else {
       
@@ -1870,6 +1917,9 @@ local({
 
 ##### combine pglyco output and RawTools output #####
 local({
+  
+  ptm <- proc.time() 
+  message("\n ***** Combining pGlyco and RawTools output ***** \n")
   
   # find pGlyco output file
   if(second_search) pattern <- "-Pro2.txt$" else pattern <- "-Pro.txt$"
@@ -1925,6 +1975,12 @@ local({
   fwrite(search_data, "pglyco_output/pglyco_quant_results.txt",
          na = "NA", row.names = FALSE, quote = FALSE, sep = "\t")
   
+  if(verbose) print(proc.time() - ptm)
+  writeLog(log_gb, new1 = paste0("Combining pGlyco and RawTools output"),
+           new2 = c(paste0("user: ", round((proc.time() - ptm)[1], 4)),
+                    paste0("system: ", round((proc.time() - ptm)[2], 4)),
+                    paste0("elapsed: ", round((proc.time() - ptm)[3], 4))))
+  
 })
 
 ##### identify oxonium ions #####
@@ -1932,7 +1988,8 @@ if(!skip_marker_ions){
   
   local({
     
-    message("\nidentify marker ions")
+    ptm <- proc.time()
+    message("\n ***** Identify marker ions *****")
     
     if(!dir.exists("pglyco_output")) dir.create("pglyco_output")
     
@@ -2001,14 +2058,29 @@ if(!skip_marker_ions){
     
     plan(strategy = "sequential")
     
+    if(verbose) print(proc.time() - ptm)
+    writeLog(log_gb, new1 = paste0("Identify marker ions"),
+             new2 = c(paste0("user: ", round((proc.time() - ptm)[1], 4)),
+                      paste0("system: ", round((proc.time() - ptm)[2], 4)),
+                      paste0("elapsed: ", round((proc.time() - ptm)[3], 4))))
+    
+    
   })
   
 }
 
 ##### define Glycotypes and glycotopes #####
 
-if(!file.exists("pglyco_output/pglyco_quant_results.txt")) stop("Cannot find combined result file from pGlyco and RawTools output")
+if(!file.exists("pglyco_output/pglyco_quant_results.txt")){
+  
+  stop("Cannot find combined result file from pGlyco and RawTools output")
+
+}
+
 local({
+  
+  message("\n ***** Define glycotypes and glycotopes ***** \n")
+  ptm <- proc.time()
   
   df <- fread("pglyco_output/pglyco_quant_results.txt", sep = "\t")
 
@@ -2024,17 +2096,27 @@ local({
     
     ), "pglyco_output/pglyco_quant_results.txt", sep = "\t")
   
+  if(verbose) print(proc.time() - ptm)
+  writeLog(log_gb, new1 = paste0("Define glycotypes and glycotopes"),
+           new2 = c(paste0("user: ", round((proc.time() - ptm)[1], 4)),
+                    paste0("system: ", round((proc.time() - ptm)[2], 4)),
+                    paste0("elapsed: ", round((proc.time() - ptm)[3], 4))))
+  
 })
 
 ##### Combine reporter ion intensities of each Glycoform on a particular site #####
 
 # Combine reporter ion intensities based on Peptide + GlyID
-if(!file.exists("pglyco_output/pglyco_quant_results.txt")) stop("Cannot find combined result file from pGlyco and RawTools output")
-if(verbose) message("Transforming output tables")
+if(!file.exists("pglyco_output/pglyco_quant_results.txt")){
+  
+  stop("Cannot find combined result file from pGlyco and RawTools output")
+  
+} 
 
 local({
   
-  ptm_transform_out <- proc.time()
+  message("\n ***** Transforming output tables ***** \n")
+  ptm <- proc.time()
   
   df_scans <- fread("pglyco_output/pglyco_quant_results.txt", sep = "\t")
   df_scans <- df_scans[order(Peptide)]
@@ -2520,7 +2602,6 @@ local({
   }
   
   # write the tables
-  if(verbose) message("Write output tables")
   fwrite(dat[["scans"]],   "pglyco_output\\pGlyco_Scans.txt", sep = "\t")
   fwrite(dat[["modpept"]], "pglyco_output\\pGlyco_modified_peptides.txt", sep = "\t")
   fwrite(dat[["sites"]],   "pglyco_output\\pGlyco_glycosites.txt", sep = "\t")
@@ -2528,14 +2609,19 @@ local({
   fwrite(dat[["glycans"]], "pglyco_output\\pGlyco_glycans.txt", sep = "\t")
   fwrite(dat[["glycotopes"]], "pglyco_output\\pGlyco_glycotopes.txt", sep = "\t")
   
-  if(verbose) proc.time() - ptm_transform_out
+  if(verbose) print(proc.time() - ptm)
+  writeLog(log_gb, new1 = paste0("Transforming output tables"),
+           new2 = c(paste0("user: ", round((proc.time() - ptm)[1], 4)),
+                    paste0("system: ", round((proc.time() - ptm)[2], 4)),
+                    paste0("elapsed: ", round((proc.time() - ptm)[3], 4))))
   
 })
-
-message("\nDONE!\n")
+##### DONE #####
+message("\n ***** DONE! *****\n")
 
 if(verbose) proc.time() - ptm
-writeLog(log_gb, new1 = paste0("Processing time: "), new2 = c(paste0("user: ", round((proc.time() - ptm)[1], 4)),
-                                                              paste0("system: ", round((proc.time() - ptm)[2], 4)),
-                                                              paste0("elapsed: ", round((proc.time() - ptm)[3], 4))))
+writeLog(log_gb, new1 = paste0("Total processing time: "),
+         new2 = c(paste0("user: ", round((proc.time() - ptm)[1], 4)),
+                  paste0("system: ", round((proc.time() - ptm)[2], 4)),
+                  paste0("elapsed: ", round((proc.time() - ptm)[3], 4))))
 
