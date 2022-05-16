@@ -747,6 +747,9 @@ if(any(grepl("--skip_marker_ions", args))) skip_marker_ions <- TRUE
 ##### read fasta file #####
 local({
   
+  ptm <- proc.time() 
+  message("\n Prepare Fasta File")
+  
   # find fasta file
   fasta_files <- list.files(pattern = "\\.[Ff][Aa][Ss][Tt][Aa]$")
   if(length(fasta_files) == 0) stop("Cannot find any .fasta files")
@@ -793,12 +796,20 @@ local({
                                             pattern = " ", n = 2)[, 1]
   ff_headers    <<- gsub("^>", "", ff_headers)
   fasta.N2J     <- fasta
-  fasta.N2J[-ff_header_pos] <- gsub("N(.[STC])", "J\\1",
-                                    fasta.N2J[-ff_header_pos])
+  
+  # replace all N.[STC] with [J.[STC]] in one line
+  while(any(grepl("N.[STC]", fasta.N2J[-ff_header_pos]))){
+    
+    fasta.N2J[-ff_header_pos] <- gsub("N(.[STC])", "J\\1",
+                                      fasta.N2J[-ff_header_pos])
+    
+  }
   
   # write down the modified fasta file
   # don't use 'fwrite' function: it causes problems with pGlyco
   writeLines(fasta.N2J, paste0(fasta.name, ".N2J")) 
+  
+  if(verbose) print(proc.time() - ptm)
 
 })
 ##### run RawTools #####
