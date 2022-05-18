@@ -37,7 +37,8 @@ install_packages <- function(packages, install = TRUE, verbose = verbose){
   
   if(length(not_installed_packages) > 0){
     
-    message("Following packages are not found\n", paste(not_installed_packages, collapse = " "))
+    message("Following packages are not found\n",
+            paste(not_installed_packages, collapse = " "))
     
     if(install){
       
@@ -55,7 +56,9 @@ install_packages <- function(packages, install = TRUE, verbose = verbose){
   not_installed_packages <- packages[!packages %in% installed.packages()]
   if(length(not_installed_packages) > 0) {
     
-    stop(paste("Following packages could not be installed, please conduct installation manually\n", not_installed_packages, collapse = " " ))
+    stop(paste("Following packages could not be installed,
+               please conduct installation manually\n",
+               not_installed_packages, collapse = " " ))
     
   }
   
@@ -80,9 +83,19 @@ options(future.globals.maxSize = +Inf)
 # write logs
 writeLog <- function(log_gb, new1 = "", new2 = ""){
   
-  if(file.exists("Glycobinder.log.txt")) log_gb <- readLines("Glycobinder.log.txt") else log_gb <- character()
-  writeLines(append(log_gb, c(paste0("[", Sys.time(), "] ", new1),
-                              new2)), "Glycobinder.log.txt")
+  if(file.exists("Glycobinder.log.txt")) {
+    
+    log_gb <- readLines("Glycobinder.log.txt")
+    
+    } else {
+      
+      log_gb <- character()
+  
+    }
+  
+   writeLines(append(log_gb,
+                     c(paste0("[", Sys.time(), "] ", new1),
+                     new2)), "Glycobinder.log.txt")
 }
 
 # collect arguments
@@ -120,10 +133,12 @@ readMgf    <- function(path){
   # scan_header = entire scan header as a character verctor
   # ions = matrix of ions m/z and corresponding intensities
   
-  mgf             <- fread(file = path, header = FALSE, sep = NULL, colClasses = "character")
+  mgf             <- fread(file = path, header = FALSE,
+                           sep = NULL, colClasses = "character")
   start.positions <- str_which(mgf[[1]], "^BEGIN IONS$")
   end.positions   <- str_which(mgf[[1]], "^END IONS$")
-  mgf_scan_nr     <- as.integer(str_match(str_subset(mgf[[1]], "^TITLE="), "\\.([0-9]+)\\.")[, 2])
+  mgf_scan_nr     <- as.integer(str_match(str_subset(mgf[[1]], "^TITLE="),
+                                          "\\.([0-9]+)\\.")[, 2])
   
   ionsBegin <- function(mgf, start, end){
     
@@ -132,7 +147,10 @@ readMgf    <- function(path){
   }
   
   # determine ion positions
-  ions.positions <- unlist(Map(ionsBegin, start = start.positions, end = end.positions, MoreArgs = list(mgf = mgf[[1]])))
+  ions.positions <- unlist(Map(ionsBegin,
+                               start = start.positions,
+                               end = end.positions,
+                               MoreArgs = list(mgf = mgf[[1]])))
   
   # remove empty scans
   if(any(is.na(ions.positions))){
@@ -144,15 +162,22 @@ readMgf    <- function(path){
     
   }
   
-  scan_headers   <- Map(function(mgf, start, end) mgf[start:end], start = start.positions, end = (ions.positions-1), MoreArgs = list(mgf = mgf[[1]]))
-  ions           <- Map(function(mgf, start, end){
+  scan_headers <- Map(function(mgf, start, end) mgf[start:end],
+                        start = start.positions,
+                        end = (ions.positions-1),
+                        MoreArgs = list(mgf = mgf[[1]]))
+  ions <- Map(function(mgf, start, end){
     
-    temp <- matrix(as.numeric(str_split_fixed(mgf[start:end], " ", n = 2)), ncol = 2, byrow = FALSE)
+    temp <- matrix(as.numeric(str_split_fixed(mgf[start:end], " ", n = 2)),
+                   ncol = 2, byrow = FALSE)
     temp <- subset(temp, temp[, 2] != 0)
     return(temp)
     
     
-  }, start = ions.positions,  end = (end.positions - 1), MoreArgs = list(mgf = mgf[[1]]))
+  }, 
+  start = ions.positions,
+  end = (end.positions - 1),
+  MoreArgs = list(mgf = mgf[[1]]))
   
   data.table(scan_start  = start.positions,
              scan_end    = end.positions,
@@ -172,10 +197,12 @@ readMgfHeader    <- function(path){
   # scan_number = number of the scan
   # scan_header = entire scan header as a character verctor
   
-  mgf             <- fread(file = path, header = FALSE, sep = NULL, colClasses = "character")
+  mgf             <- fread(file = path, header = FALSE,
+                           sep = NULL, colClasses = "character")
   start.positions <- str_which(mgf[[1]], "^BEGIN IONS$")
   end.positions   <- str_which(mgf[[1]], "^END IONS$")
-  mgf_scan_nr     <- as.integer(str_match(str_subset(mgf[[1]], "^TITLE="), "\\.([0-9]+)\\.")[, 2])
+  mgf_scan_nr     <- as.integer(str_match(str_subset(mgf[[1]], "^TITLE="),
+                                          "\\.([0-9]+)\\.")[, 2])
   
   ionsBegin <- function(mgf, start, end){
     
@@ -183,8 +210,14 @@ readMgfHeader    <- function(path){
     
   }
   
-  ions.positions <- unlist(Map(ionsBegin, start = start.positions, end = end.positions, MoreArgs = list(mgf = mgf[[1]])))
-  scan_headers   <- Map(function(mgf, start, end) mgf[start:end], start = start.positions, end = (ions.positions-1), MoreArgs = list(mgf = mgf[[1]]))
+  ions.positions <- unlist(Map(ionsBegin,
+                               start = start.positions,
+                               end = end.positions,
+                               MoreArgs = list(mgf = mgf[[1]])))
+  scan_headers   <- Map(function(mgf, start, end) mgf[start:end],
+                        start = start.positions,
+                        end = (ions.positions-1),
+                        MoreArgs = list(mgf = mgf[[1]]))
   
   data.table(scan_number = mgf_scan_nr,
              scan_header = scan_headers,
@@ -289,7 +322,8 @@ addPeakArea <- function(df, scans, FUN = "sum"){
   area <- unlist(lapply(ids, function(x){
     
     ppa <- scans[scans$id %in% x, c("RawName", "Peptide", "Glycan(H.N.A.G.F)",
-                                    "PrecursorMZ", "PrecursorCharge", "ParentPeakArea")]
+                                    "PrecursorMZ", "PrecursorCharge",
+                                    "ParentPeakArea")]
     ppa[, PrecursorMZ := signif(PrecursorMZ, 5)]
     ppa <- ppa[order(-ParentPeakArea)]
     ppa <- ppa[!duplicated(ppa[, -c("ParentPeakArea")])]$ParentPeakArea
@@ -306,10 +340,14 @@ addPeakArea <- function(df, scans, FUN = "sum"){
 # convert reporter ion intensities into %
 percentIntensity <- function(df, int_names){
   
-  df[, TotalRepIonIntensity := sum(unlist(.SD), na.rm = TRUE),   .SD = int_names, by = "id"]
-  df[, paste0(int_names, "Percent") := .SD/TotalRepIonIntensity, .SD = int_names, by = "id"]
-  df[, paste0(int_names, "Percent") := 100*.SD/TotalRepIonIntensity, .SD = int_names, by = "id"]
-  df[, paste0(int_names, "_ParentPeakArea") := .SD*ParentPeakArea*0.01, .SD = paste0(int_names, "Percent"), by = "id"]
+  df[, TotalRepIonIntensity := sum(unlist(.SD), na.rm = TRUE),
+     .SD = int_names, by = "id"]
+  df[, paste0(int_names, "Percent") := .SD/TotalRepIonIntensity,
+     .SD = int_names, by = "id"]
+  df[, paste0(int_names, "Percent") := 100*.SD/TotalRepIonIntensity,
+     .SD = int_names, by = "id"]
+  df[, paste0(int_names, "_ParentPeakArea") := .SD*ParentPeakArea*0.01,
+     .SD = paste0(int_names, "Percent"), by = "id"]
   return(df)
   
 }
@@ -524,8 +562,8 @@ supported_reporter_ions <- c("TMT0",
 plan_strategy <- "multisession"
 
 # pglyco
-reversed_regexpr <- "^REV_"   # decoy sequences 
-pglyco_separator <- "/"       # separator in pGlyco
+decoy_expr <- "^REV_"   # decoy sequences 
+pglyco_sep <- "/"       # separator in pGlyco
 
 # default config file for pGlyco
 pglyco_config_default <- c("[version]",
@@ -631,17 +669,18 @@ marker_ions <- c("Mass;Marker;Formula
                  ")
 
 # base glycotope types
-base_glycotopes <- c("HN(F)", "AHN", "HN(A)", "H(F)N(F)", "AHN(F)", "AHN(A)", "AAHN", "AAHN(A)", "AAAHN",
+base_glycotopes <- c("HN(F)", "AHN", "HN(A)", "H(F)N(F)", "AHN(F)",
+                     "AHN(A)", "AAHN", "AAHN(A)", "AAAHN",
                      "AHNorHN(A)", "AHN(A)orAAHN", "AAAHNorAAHN(A)")
 
 # variables that will be set through arguments
-verbose                   <- TRUE   # verbosity
-nr_threads                <- 2      # number of threads to use 
-ion_match_tolerance       <- 1      # width of the tolerance window for ion matching
-tolerance_unit            <- "ppm"  # unit for the tolerance window
-reporter_ion              <- "TMT6" # type of reporter ions
-seq_wind_size             <- 7      # number of aa from each side of the modified residue
-pglyco_fdr_threshold      <- 0.02  # total FDR cutoff
+verbose                   <- TRUE   
+nr_threads                <- 2      
+ion_match_tolerance       <- 1      
+tolerance_unit            <- "ppm"  
+reporter_ion              <- "TMT6" 
+seq_wind_size             <- 7      
+pglyco_fdr_threshold      <- 0.02  
 report_intermediate_files <- FALSE
 skip_marker_ions          <- FALSE
 parent_area_fun           <- "sum"
@@ -664,11 +703,14 @@ setwd(wd)
 ##### find raw files in the working directory #####
 raw_file_names <- list.files(pattern = paste0("\\.", raw_file_extension, "$"))
 
-if(length(raw_file_names) == 0) stop(paste0("Cannot find .", raw_file_extension, " files in the specified directory"))
+if(length(raw_file_names) == 0) stop(paste0("Cannot find .raw files"))
 message(paste0("Found raw files:\n", paste(raw_file_names, collapse = "\n")))
 
-if(any(grepl("\\.", gsub(paste0(".", raw_file_extension), "", raw_file_names)))) stop("Dots . are not allowed in raw file names (except .raw file extension)")
-
+if(any(grepl("\\.", gsub(".raw", "", raw_file_names)))){
+  
+  stop("Dots . are not allowed in raw file names (except .raw file extension)")
+  
+} 
 
 ##### collect further arguments #####
 
@@ -677,48 +719,110 @@ if(any(grepl("--verbose", args))) verbose <- TRUE else verbose <- FALSE
 
 # tolerance unit for merging MS2 and MS3 spectra
 tolerance_unit <- collectArgs("--tol_unit", args, default = "ppm", 
-                              check_fun = function(x) all(length(x) == 1 & x %in% c("ppm", "Th")))
+                              check_fun = function(x){
+                                
+                                all(length(x) == 1 & x %in% c("ppm", "Th"))
+                                
+                                })
 
 # tolerance for merging MS2 and MS3 spectra
 ion_match_tolerance <- collectArgs("--match_tol", args, default = 1,
                                    transform_fun = function(x) as.integer(x),
-                                   check_fun = function(x) all(length(x) == 1 & !is.na(x) & x != 0))
+                                   check_fun = function(x) {
+                                     
+                                     all(length(x) == 1 & 
+                                           !is.na(x) &
+                                           x != 0)
+                                     
+                                     })
 
 # reporter ion type parameter for RawTools
 reporter_ion <- collectArgs("--reporter_ion", args, default = NA,
-                            check_fun = function(x) all(length(x) == 1 & x %in% supported_reporter_ions))
+                            check_fun = function(x){
+                              
+                              all(length(x) == 1 &
+                                    x %in% supported_reporter_ions)
+                              
+                              })
 if(is.na(reporter_ion)) stop("Reporter ion type is not provided or not correct.")
 
 
 # pglyco fdr threshold
 pglyco_fdr_threshold <- collectArgs("--pglyco_fdr_threshold", args, default = 0.02,
                                     transform_fun = function(x) as.numeric(x),
-                                    check_fun = function(x) all(length(x) == 1 & x & !is.na(x) & x > 0 & x <= 1))
+                                    check_fun = function(x){
+                                      
+                                      all(length(x) == 1 &
+                                            x &
+                                            !is.na(x) &
+                                            x > 0 &
+                                            x <= 1)
+                                      
+                                      })
 
 # define sequence window size, +/- n amino acids around modified residue
 seq_wind_size <- collectArgs("--seq_wind_size", args, default = 7,
                              transform_fun = function(x) as.numeric(x),
-                             check_fun = function(x) all(length(x) == 1 & x & !is.na(x) & x >= 1 & x < 100))
+                             check_fun = function(x){
+                               
+                               all(length(x) == 1 &
+                                     x &
+                                     !is.na(x) &
+                                     x >= 1 &
+                                     x < 100)
+                               
+                               })
 
 # function for aggregating parent peak areas
 parent_area_fun <-  collectArgs("--parent_area_fun", args, default = "sum",
-                                check_fun = function(x) all(length(x) == 1 & x %in% c("sum", "median", "mean", "max", "min")))
+                                check_fun = function(x){
+                                  
+                                  fun <- c("sum", "median", "mean", "max", "min")
+                                  all(length(x) == 1 &
+                                        x %in% fun)
+                                  
+                                  } )
 
 # number of available threads
 nr_of_processors <- shell("set NUMBER_OF_PROCESSORS", intern = TRUE)
 nr_of_processors <- gsub("NUMBER_OF_PROCESSORS=", "", nr_of_processors)
 nr_of_processors <- as.integer(nr_of_processors)
 
-nr_threads <- collectArgs("--nr_threads", args, default = max(nr_of_processors - 2, 1), verbose = verbose,
+nr_threads <- collectArgs("--nr_threads", args,
+                          default = max(nr_of_processors - 2, 1),
+                          verbose = verbose,
                           transform_fun = function(x) as.integer(x),
-                          check_fun = function(x) all(length(x) == 1 & !is.na(x) & x >= 1 & x <= nr_of_processors))
+                          check_fun = function(x){
+                            
+                            all(length(x) == 1 &
+                                  !is.na(x) &
+                                  x >= 1 &
+                                  x <= nr_of_processors)
+                            
+                            })
 if(nr_threads > length(raw_file_names)) nr_threads <- length(raw_file_names)
 
 # perform second pglyco search on the reduced fasta file
-if(any(grepl("--no_second_search", args))) second_search <- FALSE else second_search <- TRUE
+if(any(grepl("--no_second_search", args))){
+  
+    second_search <- FALSE
+  
+  } else {
+    
+    second_search <- TRUE
+
+  }
 
 #report intermediate results
-if(any(grepl("--report_intermediate_files", args))) report_intermediate_files <- TRUE else report_intermediate_files <- FALSE
+if(any(grepl("--report_intermediate_files", args))){
+  
+  report_intermediate_files <- TRUE
+  
+  } else {
+    
+    report_intermediate_files <- FALSE
+
+  }
 
 # skip search for marker ions
 if(any(grepl("--skip_marker_ions", args))) skip_marker_ions <- TRUE
@@ -2140,7 +2244,7 @@ local({
     
     modpt_prec <- aggregateData(data = data,
                                 by = by,
-                                f = function(x) paste(x, collapse = pglyco_separator),
+                                f = function(x) paste(x, collapse = pglyco_sep),
                                 cols = c("id", "RawName", "Scan", "PrecursorMZ",
                                          "Charge", "Mod", "ParentPeakArea"))
     
@@ -2159,7 +2263,7 @@ local({
     modpt_gly2 <- aggregateData(data = data,
                                 by = by,
                                 f = function(x) paste(x,
-                                                      collapse = pglyco_separator),
+                                                      collapse = pglyco_sep),
                                 cols = c("Glycotope_F", "Glycotope_A",
                                          "Glycotope_F_unmatched",
                                          "Glycotope_A_unmatched"))
@@ -2195,7 +2299,7 @@ local({
                by = id]
     
     # remove reversed sequences
-    dt <- dt[!grepl(reversed_regexpr, Protein_single), ] 
+    dt <- dt[!grepl(decoy_expr, Protein_single), ] 
     
     # find header position in the fasta file
     dt[, ff_header_pos :=  ..header_pos[match(Protein_single, ..headers)]]
@@ -2207,8 +2311,8 @@ local({
   }
   
   df_prot <- ctProteinTable(dt = df_modpept,
-                            sep = pglyco_separator,
-                            decoy = reversed_regexpr,
+                            sep = pglyco_sep,
+                            decoy = decoy_expr,
                             headers = ff_headers,
                             header_pos = ff_header_pos)
   
