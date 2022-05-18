@@ -789,7 +789,8 @@ nr_of_processors <- gsub("NUMBER_OF_PROCESSORS=", "", nr_of_processors)
 nr_of_processors <- as.integer(nr_of_processors)
 
 nr_threads <- collectArgs("--nr_threads", args,
-                          default = max(nr_of_processors - 2, 1),
+                          default = min(max(nr_of_processors / 2, 1),
+                                        length(raw_file_names)),
                           verbose = verbose,
                           transform_fun = function(x) as.integer(x),
                           check_fun = function(x){
