@@ -70,6 +70,7 @@ install_packages(packages_to_load, install = TRUE)
 # attach packages
 library("data.table")
 library("future.apply")
+library("stringr")
 
 # set future options and parameters
 options(future.globals.maxSize = +Inf)
@@ -120,13 +121,13 @@ readMgf    <- function(path){
   # ions = matrix of ions m/z and corresponding intensities
   
   mgf             <- fread(file = path, header = FALSE, sep = NULL, colClasses = "character")
-  start.positions <- stringr::str_which(mgf[[1]], "^BEGIN IONS$")
-  end.positions   <- stringr::str_which(mgf[[1]], "^END IONS$")
-  mgf_scan_nr     <- as.integer(stringr::str_match(stringr::str_subset(mgf[[1]], "^TITLE="), "\\.([0-9]+)\\.")[, 2])
+  start.positions <- str_which(mgf[[1]], "^BEGIN IONS$")
+  end.positions   <- str_which(mgf[[1]], "^END IONS$")
+  mgf_scan_nr     <- as.integer(str_match(str_subset(mgf[[1]], "^TITLE="), "\\.([0-9]+)\\.")[, 2])
   
   ionsBegin <- function(mgf, start, end){
     
-    stringr::str_which(mgf[start:end], "^[0-9.]+\\s[0-9.]+$")[1] + (start - 1)
+    str_which(mgf[start:end], "^[0-9.]+\\s[0-9.]+$")[1] + (start - 1)
     
   }
   
@@ -146,7 +147,7 @@ readMgf    <- function(path){
   scan_headers   <- Map(function(mgf, start, end) mgf[start:end], start = start.positions, end = (ions.positions-1), MoreArgs = list(mgf = mgf[[1]]))
   ions           <- Map(function(mgf, start, end){
     
-    temp <- matrix(as.numeric(stringr::str_split_fixed(mgf[start:end], " ", n = 2)), ncol = 2, byrow = FALSE)
+    temp <- matrix(as.numeric(str_split_fixed(mgf[start:end], " ", n = 2)), ncol = 2, byrow = FALSE)
     temp <- subset(temp, temp[, 2] != 0)
     return(temp)
     
@@ -172,13 +173,13 @@ readMgfHeader    <- function(path){
   # scan_header = entire scan header as a character verctor
   
   mgf             <- fread(file = path, header = FALSE, sep = NULL, colClasses = "character")
-  start.positions <- stringr::str_which(mgf[[1]], "^BEGIN IONS$")
-  end.positions   <- stringr::str_which(mgf[[1]], "^END IONS$")
-  mgf_scan_nr     <- as.integer(stringr::str_match(stringr::str_subset(mgf[[1]], "^TITLE="), "\\.([0-9]+)\\.")[, 2])
+  start.positions <- str_which(mgf[[1]], "^BEGIN IONS$")
+  end.positions   <- str_which(mgf[[1]], "^END IONS$")
+  mgf_scan_nr     <- as.integer(str_match(str_subset(mgf[[1]], "^TITLE="), "\\.([0-9]+)\\.")[, 2])
   
   ionsBegin <- function(mgf, start, end){
     
-    stringr::str_which(mgf[start:end], "^[0-9.]+\\s[0-9.]+$")[1] + (start - 1)
+    str_which(mgf[start:end], "^[0-9.]+\\s[0-9.]+$")[1] + (start - 1)
     
   }
   
@@ -235,52 +236,10 @@ ion_match <- function(marker_ions,
   
 }
 
-# Form peptide groups based on Sequence Window
-aggregateIds <- function(list_ids, start_id){
-  
-  # Function forms a closed group of indices around starting integer number.
-  # It returns a vector of TRUE or FALSE values, where each TRUE/FALSE value corresponds to an element in the list.
-  # TRUE means that the list element contains any indicies from the formed group of indicies.
-  # Function takes a list of integer vectors (list_ids) and an integer (start_id) as a starting point.
-  # It finds which list elements contain the starting integer number.
-  # Other indices that are present within those list elements together with the starting number form a group of indices.
-  # The algorithm continues to search for list elements that contain any of the numbers from the newly formed group of indices. 
-  # If new list elements contain other indicies that are not a part of the group yet, they are added to the group.
-  # Algorithm continues as long as the group of indices grows.
-  # Once no new indices are entering the group, a closed group of indices within the data set is formed.
-  # TRUE is returned for elements containing any of the indicies from the closed group of indices.
-  # FALSE is returned for all other elements
-  # Then it looks for the list elements that contain the starting integer number and other numbers
-  # that were present in the same list elements
-  # Arguments:
-  # list_ids = list of integer vectors (e.g. modified peptide ids belonging to each of the sequence windows)
-  # start_id = integer number (id) to start with
-  # Value:
-  # Logical vector, TRUE corresponds to elements in the list_ids that contain any of ids from the formed group of ids
-  
-  temp_id <- start_id
-  length_before <- 0
-  length_after  <- 1
-  
-  while(length_before < length_after){
-    
-    length_before <- length(temp_id)
-    
-    temp_sw <- unlist(lapply(list_ids, function(x) any(x %in% temp_id)))
-    temp_id <- unique(unlist(list_ids[temp_sw]))
-    
-    length_after <- length(temp_id)
-    
-  }
-  
-  return(temp_sw)
-  
-}
-
 # add core fucosylation information
 add_corefuc <- function(df, scans){
   
-  ids <- lapply(stringr::str_split(df$pGlyco_ids, pattern = "[;/]"), as.integer)
+  ids <- lapply(str_split(df$pGlyco_ids, pattern = "[;/]"), as.integer)
   CoreFuc <- unlist(lapply(ids, function(x){
     
     paste0(scans$CoreFuc[scans$id %in% x], collapse = ";")
@@ -294,7 +253,7 @@ add_corefuc <- function(df, scans){
 # check if any structure contain fucose
 check_f_struct <- function(df, scans){
   
-  ids <- lapply(stringr::str_split(df$pGlyco_ids, pattern = "[;/]"), as.integer)
+  ids <- lapply(str_split(df$pGlyco_ids, pattern = "[;/]"), as.integer)
   f_struct <- unlist(lapply(ids, function(x){
     
     any(grepl("F", scans$PlausibleStruct[scans$id %in% x]))
@@ -309,7 +268,7 @@ check_f_struct <- function(df, scans){
 # check glycans regarding the core fucose type
 check_core_fucose <- function(df, scans){
   
-  ids <- lapply(stringr::str_split(df$pGlyco_ids, pattern = "[;/]"), as.integer)
+  ids <- lapply(str_split(df$pGlyco_ids, pattern = "[;/]"), as.integer)
   core_fucose <- unlist(lapply(ids, function(x){
     
     if(all(scans$CoreFuc[scans$id %in% x] %in% c("11", "12"))) return("Yes")
@@ -326,10 +285,10 @@ check_core_fucose <- function(df, scans){
 # aggregate parent peak areas
 addPeakArea <- function(df, scans, FUN = "sum"){
   
-  ids <- lapply(stringr::str_split(df$pGlyco_ids, pattern = "[;/]"), as.integer)
+  ids <- lapply(str_split(df$pGlyco_ids, pattern = "[;/]"), as.integer)
   area <- unlist(lapply(ids, function(x){
     
-    ppa <- scans[scans$id %in% x, c("RawName", "Peptide", "Glycan(H,N,A,G,F)",
+    ppa <- scans[scans$id %in% x, c("RawName", "Peptide", "Glycan(H.N.A.G.F)",
                                     "PrecursorMZ", "PrecursorCharge", "ParentPeakArea")]
     ppa[, PrecursorMZ := signif(PrecursorMZ, 5)]
     ppa <- ppa[order(-ParentPeakArea)]
@@ -358,7 +317,7 @@ percentIntensity <- function(df, int_names){
 # Define Glycan/Glycan Antenna types
 defineGlycoType <- function(df){
   
-  df[, composition := lapply(stringr::str_split(df$`Glycan(H,N,A,G,F)`, " "), as.integer)]
+  df[, composition := lapply(str_split(`Glycan(H.N.A.G.F)`, " "), as.integer)]
   df[, Hex    := unlist(lapply(composition, "[", 1))]
   df[, HexNAc := unlist(lapply(composition, "[", 2))]
   df[, NeuAc  := unlist(lapply(composition, "[", 3))]
@@ -390,12 +349,19 @@ defineGlycoType <- function(df){
   df[(HexNAc >= 6 &
         Hex >= 3), GlycanAntennaType := "A4/A3B"]
   df[, GlycanType := GlycanAntennaType]
-  df[GlycanAntennaType %in% c("A2/A1B", "A3/A2B", "A4/A3B"), GlycanType := "Complex"]
+  df[GlycanAntennaType %in% c("A2/A1B", "A3/A2B", "A4/A3B"),
+     GlycanType := "Complex"]
   
-  df <- df[, .SD, .SDcols = c(names(df)[1:which(names(df) == "Glycan(H,N,A,G,F)")],
-                              "GlycanType", "GlycanAntennaType",
-                              setdiff(names(df)[(which(names(df) == "Glycan(H,N,A,G,F)")+1):length(df)], c("GlycanType", "GlycanAntennaType"))
-  )]
+  names_new <- c("GlycanType", "GlycanAntennaType")
+  names_before <- names(df)[1:which(names(df) == "Glycan(H.N.A.G.F)")]
+  names_after  <- setdiff(
+    
+    names(df)[(which(names(df) == "Glycan(H.N.A.G.F)")+1):length(df)],
+    names_new
+    
+    )
+  
+  df <- df[, .SD, .SDcols = c(names_before, names_new, names_after)]
   
   return(df[, -c("composition", "Hex", "HexNAc", "NeuAc", "NeuGc", "Fuc")])
   
@@ -474,13 +440,19 @@ defineGlycoTope <- function(df, limit_intensity = 0.1){
      Glycotope_A := "AHN"]
   
   df[, Glycotope := Glycotope_F]
-  df[Glycotope_F != "" & Glycotope_A != "", Glycotope := paste0(Glycotope_F, " & ", Glycotope_A)]
+  df[Glycotope_F != "" & Glycotope_A != "",
+     Glycotope := paste0(Glycotope_F, " & ", Glycotope_A)]
   
-  df <- df[, .SD, .SDcols = c(names(df)[1:which(names(df) == "GlycanAntennaType")],
-                              "Glycotope", "Glycotope_F", "Glycotope_A",
-                              setdiff(names(df)[(which(names(df) == "GlycanAntennaType")+1):length(df)],
-                                      c("Glycotope", "Glycotope_F", "Glycotope_A"))
-  )]
+  names_new <- c("Glycotope", "Glycotope_F", "Glycotope_A")
+  names_before <- names(df)[1:which(names(df) == "GlycanAntennaType")]
+  names_after  <- setdiff(
+    
+    names(df)[(which(names(df) == "GlycanAntennaType")+1):length(df)],
+    names_new
+    
+  )
+  
+  df <- df[, .SD, .SDcols = c(names_before, names_new, names_after)]
   
   return(df[, -c("Glycotope")])
   
@@ -489,11 +461,11 @@ defineGlycoTope <- function(df, limit_intensity = 0.1){
 #check for glycotope conflict
 glycotopeConflict <- function(df){
   
-  df[, composition := stringr::str_split(`Glycan(H,N,A,G,F)`, " ")]
+  df[, composition := str_split(`Glycan(H.N.A.G.F)`, " ")]
   df[, n_neuac := as.integer(unlist(lapply(composition, "[", 3)))]
   df[, n_fuc   := as.integer(unlist(lapply(composition, "[", 5)))]
-  # df[, Glycotope_F := unlist(lapply(stringr::str_split(Glycotope, " & "), "[", 1))]
-  # df[, Glycotope_A := unlist(lapply(stringr::str_split(Glycotope, " & "), "[", 2))]
+  # df[, Glycotope_F := unlist(lapply(str_split(Glycotope, " & "), "[", 1))]
+  # df[, Glycotope_A := unlist(lapply(str_split(Glycotope, " & "), "[", 2))]
   
   df[, Glycotope_F_unmatched := ""]
   df[, Glycotope_A_unmatched := ""]
@@ -519,11 +491,17 @@ glycotopeConflict <- function(df){
        n_neuac < 3, Glycotope_A_unmatched := "+"]
   
   df <- df[, -c("composition", "n_neuac", "n_fuc")]
-  df <- df[, .SD, .SDcols = c(names(df)[1:which(names(df) == "Glycotope_A")],
-                              "Glycotope_F_unmatched", "Glycotope_A_unmatched",
-                              setdiff(names(df)[(which(names(df) == "Glycotope_A")+1):length(df)],
-                                      c("Glycotope_F_unmatched", "Glycotope_A_unmatched"))
-  )]
+  
+  names_new <- c("Glycotope_F_unmatched", "Glycotope_A_unmatched")
+  names_before <- names(df)[1:which(names(df) == "Glycotope_A")]
+  names_after  <- setdiff(
+    
+    names(df)[(which(names(df) == "Glycotope_A")+1):length(df)],
+    names_new
+    
+  )
+  
+  df <- df[, .SD, .SDcols = c(names_before, names_new, names_after)]
   
   return(df)
   
@@ -782,7 +760,7 @@ local({
 
     fasta[ff_header_pos] <- "___"
     fasta <- paste0(fasta, collapse = "")
-    fasta <- unlist(stringr::str_split(fasta, "___"))
+    fasta <- unlist(str_split(fasta, "___"))
     fasta <- fasta[-1]
     fasta2 <- vector("character", length(ff_header_pos) * 2)
     fasta2[seq(1, length(fasta2), 2)] <- ff_headers
@@ -794,7 +772,7 @@ local({
   
   fasta         <<- readFASTA(fasta_files)
   ff_header_pos <<- seq(1, length(fasta), 2)
-  ff_headers    <<- stringr::str_split_fixed(fasta[ff_header_pos],
+  ff_headers    <<- str_split_fixed(fasta[ff_header_pos],
                                             pattern = " ", n = 2)[, 1]
   ff_headers    <<- gsub("^>", "", ff_headers)
   fasta.N2J     <- fasta
@@ -1874,7 +1852,7 @@ local({
         
       # select glycoproteins
       pglyco_file <- pglyco_file[TotalFDR < (pglyco_fdr_threshold)]
-      proteins <- unique(unlist(stringr::str_split(pglyco_file$Proteins, "/")))
+      proteins <- unique(unlist(str_split(pglyco_file$Proteins, "/")))
       proteins <- proteins[!grepl("^REV_", proteins)]
         
       # prepare fasta file
@@ -1923,15 +1901,19 @@ local({
   
   # find pGlyco output file
   if(second_search) pattern <- "-Pro2.txt$" else pattern <- "-Pro.txt$"
-  pglyco_out <- list.files(path = "pglyco_output", pattern = pattern, full.names = TRUE)
+  pglyco_out <- list.files(path = "pglyco_output",
+                           pattern = pattern, full.names = TRUE)
   
   if(length(pglyco_out) == 0) stop(paste0("Cannot find pGlyco output files"))
-  if(verbose) message(paste0("Found pGlyco files:\n", paste(pglyco_out, collapse = "\n")))
+  if(verbose) message(paste0("Found pGlyco files:\n",
+                             paste(pglyco_out, collapse = "\n")))
   
   # check that matrix files are present
-  matrix_files  <- list.files(path = "rawtools_output", pattern = "_Matrix.txt", full.names = FALSE)
-  if(length(matrix_files) == 0) stop(paste0("Cannot find RawTools _Matrix files in the specified directory"))
-  if(verbose) message(paste0("Found _Matrix.txt files:\n", paste(matrix_files, collapse = "\n")))
+  matrix_files  <- list.files(path = "rawtools_output",
+                              pattern = "_Matrix.txt", full.names = FALSE)
+  if(length(matrix_files) == 0) stop(paste0("Cannot find RawTools _Matrix files"))
+  if(verbose) message(paste0("Found _Matrix.txt files:\n",
+                             paste(matrix_files, collapse = "\n")))
   if(verbose) message("Combining pglyco and RawTools output")
   
   addRawtoolsData <- function(search_files,
@@ -1951,7 +1933,7 @@ local({
     search_data[, RawName := gsub("\\..+$", "", search_data$GlySpec)]
     
     # read rawtools output
-    matrix_names <- stringr::str_split(rawtools_files, "\\.", simplify = TRUE)[, 1]
+    matrix_names <- str_split(rawtools_files, "\\.", simplify = TRUE)[, 1]
     rawtools_data <- data.table()
     for(i in seq_along(rawtools_files)){
       
@@ -1970,9 +1952,11 @@ local({
     
   }
   
-  search_data <- addRawtoolsData(search_files = pglyco_out, rawtools_files = matrix_files)
+  comb <- addRawtoolsData(search_files = pglyco_out,
+                          rawtools_files = matrix_files)
+  names(comb)[names(comb) == "Glycan(H,N,A,G,F)"] <- "Glycan(H.N.A.G.F)"
 
-  fwrite(search_data, "pglyco_output/pglyco_quant_results.txt",
+  fwrite(comb, "pglyco_output/pglyco_quant_results.txt",
          na = "NA", row.names = FALSE, quote = FALSE, sep = "\t")
   
   if(verbose) print(proc.time() - ptm)
@@ -2122,7 +2106,9 @@ local({
   df_scans <- df_scans[order(Peptide)]
   df_scans <- df_scans[TotalFDR < pglyco_fdr_threshold]
   df_scans[, id := 1:df_scans[, .N]]
-  df_scans[, Unique_site := !grepl("/", Proteins)] # site is unique if only one protein id is reported
+  # site is unique if only one protein id is reported
+  df_scans[, Unique_site := !grepl("/", Proteins)] 
+  # adjust the column name
   
   # intensity names
   int_names <- grep("\\d\\d+[NC]?Intensity$", names(df_scans), value = TRUE)
@@ -2130,7 +2116,8 @@ local({
   # marker ion names
   if(!skip_marker_ions){
     
-    mion_names <- unlist(fread("pglyco_output/marker_ions_identified.txt", nrow = 1, header = FALSE))
+    mion_names <- unlist(fread("pglyco_output/marker_ions_identified.txt",
+                               nrow = 1, header = FALSE))
     mion_names <- mion_names[!mion_names %in% c("Scan", "RawName")]
     
   } else {
@@ -2138,134 +2125,249 @@ local({
     mion_names <- character()
     
   }
-  # combine intensities for modified peptides
-  modpept_int_sum        <- df_scans[, lapply(.SD, sum), by = .(Peptide, GlySite, `Glycan(H,N,A,G,F)`),
-                                     .SDcols = c(int_names, mion_names)]
-  modpept_precursor_data <- df_scans[, lapply(.SD, paste, collapse = pglyco_separator), by = .(Peptide, GlySite, `Glycan(H,N,A,G,F)`),
-                                     .SDcols = c("id", "RawName", "Scan", "PrecursorMZ", "Charge", "Mod", "ParentPeakArea")]
-  modpept_pept_data      <- df_scans[, head(.SD, 1), by = .(Peptide, GlySite, `Glycan(H,N,A,G,F)`),
-                                     .SDcols = c("Proteins", "ProSite", "Unique_site")]
-  modpept_glycan_data    <- df_scans[, head(.SD, 1), by = .(Peptide, GlySite, `Glycan(H,N,A,G,F)`),
-                                     .SDcols = c("GlyID", "PlausibleStruct", "GlycanType", "GlycanAntennaType", "GlyFrag", "GlyMass")]
-  modpept_glycan_data2   <- df_scans[, lapply(.SD, paste, collapse = pglyco_separator), by = .(Peptide, GlySite, `Glycan(H,N,A,G,F)`),
-                                     .SDcols = c("Glycotope_F", "Glycotope_A", "Glycotope_F_unmatched", "Glycotope_A_unmatched")]
   
-  df_modpept <- cbind(modpept_precursor_data,
-                      modpept_pept_data[, -c("Peptide", "GlySite", "Glycan(H,N,A,G,F)")],
-                      modpept_glycan_data[, -c("Peptide", "GlySite", "Glycan(H,N,A,G,F)")],
-                      modpept_glycan_data2[, -c("Peptide", "GlySite", "Glycan(H,N,A,G,F)")],
-                      modpept_int_sum    [, -c("Peptide", "GlySite", "Glycan(H,N,A,G,F)")])
-  
-  # pGlyco_ids correspond to the row number of df_scans, df_modpept gets its own ids
-  names(df_modpept)[names(df_modpept) == "id"] <- "pGlyco_ids" 
-  df_modpept[, id := 1:df_modpept[, .N]]
-  
+  aggregateData  <- function(data, by, f, cols){
+
+    data[, lapply(.SD, f), by = by, .SDcols = cols]
+
+  }
+  aggregateModPt <- function(data, by){
+    
+    modpt_int  <- aggregateData(data = data,
+                                by = by,
+                                f = function(x) sum(x, na.rm = TRUE),
+                                cols = c(int_names, mion_names))
+    
+    modpt_prec <- aggregateData(data = data,
+                                by = by,
+                                f = function(x) paste(x, collapse = pglyco_separator),
+                                cols = c("id", "RawName", "Scan", "PrecursorMZ",
+                                         "Charge", "Mod", "ParentPeakArea"))
+    
+    modpt_pept <- aggregateData(data = data,
+                                by = by,
+                                f = function(x) head(x, 1),
+                                cols = c("Proteins", "ProSite", "Unique_site"))
+    
+    modpt_gly1 <- aggregateData(data = data,
+                                by = by,
+                                f = function(x) head(x, 1),
+                                cols = c("GlyID", "PlausibleStruct", "GlycanType",
+                                         "GlycanAntennaType", "GlyFrag",
+                                         "GlyMass"))
+    
+    modpt_gly2 <- aggregateData(data = data,
+                                by = by,
+                                f = function(x) paste(x,
+                                                      collapse = pglyco_separator),
+                                cols = c("Glycotope_F", "Glycotope_A",
+                                         "Glycotope_F_unmatched",
+                                         "Glycotope_A_unmatched"))
+    
+    df <- cbind(modpt_prec,
+                  modpt_pept[, -c("Peptide", "GlySite", "Glycan(H.N.A.G.F)")],
+                  modpt_gly1[, -c("Peptide", "GlySite", "Glycan(H.N.A.G.F)")],
+                  modpt_gly2[, -c("Peptide", "GlySite", "Glycan(H.N.A.G.F)")],
+                  modpt_int[, -c("Peptide", "GlySite", "Glycan(H.N.A.G.F)")])
+    
+    # pGlyco_ids correspond to the row number of df_scans, df gets its own ids
+    names(df)[names(df) == "id"] <- "pGlyco_ids" 
+    df[, id := 1:.N]
+    df <- df[, .SD, .SDcols = c("id", Filter(function(x) x != "id", names(df)))]
+    return(df)
+    
+  }
+  df_modpept <- aggregateModPt(data = df_scans,
+                               by = c("Peptide", "GlySite",
+                                      "Glycan(H.N.A.G.F)"))
+
   # Proteins and sequence windows
+  ctProteinTable <- function(dt,
+                             sep,
+                             decoy,
+                             headers,
+                             header_pos){
+    
+    # one protein - site per row
+    dt <- dt[, list(Protein_single = unlist(strsplit(Proteins, sep)),
+                    ProSite_single = unlist(strsplit(as.character(ProSite),
+                                                     sep))),
+               by = id]
+    
+    # remove reversed sequences
+    dt <- dt[!grepl(reversed_regexpr, Protein_single), ] 
+    
+    # find header position in the fasta file
+    dt[, ff_header_pos :=  ..header_pos[match(Protein_single, ..headers)]]
+    # position of the sequence (next line after the header)
+    dt[, ff_seq_stop   := ff_header_pos + 1]
+    
+    return(dt)
+    
+  }
   
-  # one protein - site per row
-  df_prot <- df_modpept[, list(Protein_single = unlist(strsplit(Proteins, pglyco_separator)),
-                               ProSite_single = unlist(strsplit(as.character(ProSite),  pglyco_separator))),
-                        by = id]
+  df_prot <- ctProteinTable(dt = df_modpept,
+                            sep = pglyco_separator,
+                            decoy = reversed_regexpr,
+                            headers = ff_headers,
+                            header_pos = ff_header_pos)
   
-  # remove reversed sequences
-  df_prot <- df_prot[!grepl(reversed_regexpr, df_prot$Protein_single), ] 
-  
-  # find header position in the fasta file
-  df_prot[, ff_header_pos :=  ..ff_header_pos[match(df_prot$Protein_single, ..ff_headers)]]
-  df_prot[, ff_seq_stop   := (..ff_header_pos[match(df_prot$Protein_single, ..ff_headers) + 1] - 1)]
-  df_prot[is.na(ff_seq_stop), ff_seq_stop := length(fasta)]
-  
-  if(verbose && sum(is.na(df_prot$ff_header_pos)) > 0) message("\nProteins not found in fasta file: ", sum(is.na(df_prot$ff_header_pos)))
-  
-  # extract sequence windows
-  df_prot[, seq_wind := unlist(lapply(seq_along(df_prot$ff_header_pos), function(i){
+  addSeqWind <- function(dt, fasta){
     
-    temp_header_pos <- df_prot$ff_header_pos[i]
-    temp_seq_stop   <- df_prot$ff_seq_stop[i]
-    temp_seq_pos    <- as.integer(df_prot$ProSite_single[i])
+    dt[, ProSite_single := as.integer(ProSite_single)]
+    dt[, start := ProSite_single - seq_wind_size]
+    dt[, end   := ProSite_single + seq_wind_size]
+    dt[, seq_wind := substr(..fasta[ff_seq_stop], start, end), by = "id"]
+    dt[, missing_start := start - 1]
+    dt[, missing_end   := nchar(..fasta[ff_seq_stop]) - end]
+    dt[missing_start < 0, seq_wind := paste0(
+      
+      paste0(rep("_", times = abs(missing_start)), collapse = ""),
+      seq_wind
+      
+      ), by = "id"]
+    dt[missing_end < 0, seq_wind := paste0(
+      
+      seq_wind,
+      paste0(rep("_", times = abs(missing_end)), collapse = "")
+      
+      ), by = "id"]
+    dt[, seq_wind_noSpace := gsub("_", "", seq_wind)]
     
-    temp_sequence <- paste0(fasta[(temp_header_pos + 1) : temp_seq_stop], collapse = "")
-    temp_seq_wind <- substr(temp_sequence, start = temp_seq_pos - seq_wind_size, stop = temp_seq_pos + seq_wind_size)
+    return(dt[, -c("start", "end", "missing_start",
+                   "missing_end", "ff_header_pos", "ff_seq_stop")])
     
-    # if the site is located at the end of the sequence: append "___"
-    
-    missing_start <- temp_seq_pos - (seq_wind_size + 1)
-    missing_end   <- nchar(temp_sequence) - (temp_seq_pos + seq_wind_size)
-    
-    if(missing_start < 0) temp_seq_wind <- paste0(paste0(rep("_", times = abs(missing_start)), collapse = ""), temp_seq_wind)
-    if(missing_end < 0)   temp_seq_wind <- paste0(temp_seq_wind, paste0(rep("_", times = abs(missing_end)),   collapse = ""))
-    
-    temp_seq_wind
-    
-  }))]
-  
-  # sequence windows without space holders
-  df_prot[, seq_wind_noSpace := gsub("_", "", seq_wind)]
+  }
+  df_prot <- addSeqWind(dt = df_prot, fasta = fasta)
   
   # merge with df_modpept
-  df_prot <- merge(df_prot[, -c("ff_header_pos", "ff_seq_stop")], df_modpept, by = "id", all = TRUE)
+  df_prot <- merge(df_prot, df_modpept, by = "id", all = TRUE)                           
   
   # Protein ranking
-  
-  # Extract information about proteins in order to rank them
-  # one protein per row
-  df_prot_single <- df_prot[, list(Nr_Unique     = sum(Unique_site[!duplicated(ProSite_single)]),
-                                   Nr_Sites      = length(unique(ProSite_single)),
-                                   Nr_Glycoforms = length(id),
-                                   Sites         = paste(unique(ProSite_single), collapse = "/"),
-                                   Ids           = paste(unique(id), collapse = "/")),
-                            by = Protein_single]
-  
-  # From SwissProt?
-  df_prot_single[, SwissProt := grepl("^sp\\|", df_prot_single$Protein_single)]
-  
-  # is protein an Isoform?
-  df_prot_single[, Protein_Isoform := grepl("[A-Za-z0-9]-\\d", df_prot_single$Protein_single)]
-  
-  # sort proteins = rank
-  df_prot_single <- df_prot_single[order(-Nr_Unique, -Nr_Sites, -Nr_Glycoforms, -SwissProt, Protein_Isoform, Protein_single)]
-  
-  # assign Protein_id that can be also used to rank proteins
-  df_prot_single[, Protein_id := 1:df_prot_single[, .N]]
+  rankProteins <- function(dt){
+    
+    dt <- dt[, .(Nr_Unique     = sum(Unique_site[!duplicated(ProSite_single)]),
+                 Nr_Sites      = length(unique(ProSite_single)),
+                 Nr_Glycoforms = length(id),
+                 Sites         = paste(unique(ProSite_single), collapse = "/"),
+                 Ids           = paste(unique(id), collapse = "/")),
+                 by = Protein_single]
+    
+    # From SwissProt?
+    dt[, SwissProt := grepl("^sp\\|", Protein_single)]
+    
+    # is protein an Isoform?
+    dt[, Protein_Isoform := grepl("[A-Za-z0-9]-\\d", Protein_single)]
+    
+    # sort proteins = rank
+    dt <- dt[order(-Nr_Unique, -Nr_Sites, -Nr_Glycoforms,
+                   -SwissProt, Protein_Isoform, Protein_single)]
+    
+    # assign Protein_id that can be also used to rank proteins
+    dt[, Protein_id := 1:.N]
+    
+    return(dt)
+    
+  }
+  df_prot_single <- rankProteins(df_prot)
   
   # add protein rank to df_prot table
-  df_prot <- merge(df_prot, df_prot_single[, c("Protein_single", "Protein_id")], by = "Protein_single", all.x = TRUE)
+  df_prot <- merge(df_prot, df_prot_single[, c("Protein_single", "Protein_id")],
+                   by = "Protein_single", all.x = TRUE)
   
   # Select sequence windows that explain modified peptdies
   
   # aggregate modpept_id for each sequence window
   sw_modpept <- df_prot[, lapply(.SD, function(x) paste0(unique(x), collapse = ";")),
-                        by = .(seq_wind), .SDcols = c("id")]
+                        by = .(seq_wind),
+                        .SDcols = "id"]
   
-  # aggregate Protein ids for each sequence window
-  sw_protein <- df_prot[, lapply(.SD, function(x) paste0(x, collapse = ";")),
-                        by = .(seq_wind), .SDcols = c("Protein_single", "ProSite_single")]
-  
-  # extract maximal (minimal number) protein rank for a sequence window
-  sw_max_rank <- df_prot[, lapply(.SD, min), by = .(seq_wind), .SDcols = "Protein_id"]
-  
-  # df_sw table combines sequence windows and modified peptides that explain those sequence windows
+  # all ids and ids per sequence window
   ids      <- unique(df_prot$id)
-  list_ids <- strsplit(sw_modpept$id, split = ";")
+  list_ids <- str_split(sw_modpept$id, ";")
   list_ids <- lapply(list_ids, as.numeric)
   
-  df_sw <- data.table()
-  while(length(ids) > 0){
+  aggregateIds <- function(dt, start_id){
     
-    # find all peptides that form a group
-    aggregated_sw  <- aggregateIds(list_ids, start_id = ids[1])
-    sum(aggregated_sw)
+    # The function checks which sequence windows (elements of the list)
+    # contain shared peptide ids 
+    # It forms a closed group of indices around starting integer number.
+    # It returns a vector of TRUE or FALSE values,
+    # where each TRUE/FALSE value corresponds to an element in the list.
+    # TRUE means that the list element contains any indicies
+    # from the formed group of indicies.
+    # Function takes a list of integer vectors (list_ids)
+    # and an integer (start_id) as a starting point.
+    # It finds which list elements contain the starting integer number.
+    # Indicies in those list elements form a group of indices.
+    # The algorithm continues to search for list elements
+    # that contain any of the numbers from the newly formed group of indices. 
+    # If new list elements contain other indicies
+    # that are not a part of the group yet, they are added to the group.
+    # Algorithm continues as long as the group of indices grows.
+    # Once no new indices are entering the group,
+    # a closed group of indices within the data set is formed.
+    # TRUE is returned for elements containing any of the indicies
+    # from the closed group of indices.
+    # FALSE is returned for all other elements
     
-    # extract modpept ids belonging to the same group
-    unique_ids     <- unique(unlist(list_ids[aggregated_sw]))
+    # Arguments:
+    # list_ids = list of integer vectors
+    # (e.g. modified peptide ids belonging to each of the sequence windows)
+    # start_id = integer number (id) to start with
+    # Value:
+    # Logical vector, TRUE corresponds to elements in the list_ids
+    # that contain any of ids from the formed group of ids
+    
+    temp_id <- start_id
+    length_before <- 0
+    length_after  <- 1
+    
+    while(length_before < length_after){
+      
+      length_before <- length(temp_id)
+      
+      temp_sw <- unlist(lapply(list_ids, function(x) any(x %in% temp_id)))
+      temp_id <- unique(unlist(list_ids[temp_sw]))
+      
+      length_after <- length(temp_id)
+      
+    }
+    
+    return(temp_sw)
+    
+  }
+  rankSeqWind  <- function(dt,
+                           aggregated_sw){
+    
+    # aggregate modpept_id for each sequence window
+    sw_modpept <- dt[, lapply(.SD, function(x) paste0(unique(x), collapse = ";")),
+                     by = .(seq_wind),
+                     .SDcols = "id"]
+    
+    # aggregate Protein ids for each sequence window
+    sw_protein <- df_prot[, lapply(.SD, function(x) paste0(x, collapse = ";")),
+                          by = .(seq_wind),
+                          .SDcols = c("Protein_single", "ProSite_single")]
+    
+    # extract maximal (minimal number) protein rank for a sequence window
+    sw_max_rank <- dt[, lapply(.SD, min),
+                      by = .(seq_wind),
+                      .SDcols = "Protein_id"]
+    
+    list_ids <- str_split(sw_modpept$id, ";")
+    list_ids <- lapply(list_ids, as.numeric)
     
     # how many peptides from the group fit into each sequence window
-    ids_per_sw     <- lengths(list_ids[aggregated_sw])
+    ids_per_sw <- lengths(list_ids[aggregated_sw])
     
-    # order sequence windows based on 1. the number of peptides in the group it can accomodate and then if equal
+    # order sequence windows based on:
+    # 1. the number of peptides in the group it can accomodate and then if equal
     # 2. the maximal rank of the proteins it belongs to
-    sw_ordered     <- sw_modpept$seq_wind[aggregated_sw][order(-ids_per_sw, sw_max_rank$Protein_id[aggregated_sw])]
-    id_ordered     <- list_ids[aggregated_sw][order(-ids_per_sw, sw_max_rank$Protein_id[aggregated_sw])]
+    sw_ordered <- sw_modpept$seq_wind[aggregated_sw]
+    sw_ordered <- sw_ordered[order(-ids_per_sw, sw_max_rank$Protein_id[aggregated_sw])]
+    id_ordered <- list_ids[aggregated_sw]
+    id_ordered <- id_ordered[order(-ids_per_sw, sw_max_rank$Protein_id[aggregated_sw])]
     
     # check, which sequence window can be attributed to the same peptides
     same <- lapply(id_ordered, function(x) {
@@ -2274,8 +2376,8 @@ local({
       
     })
     
-    # combine sequence windows with the similar peptide sets
-    sw_list <-lapply(seq_along(same), function(i){
+    # combine sequence windows with the same peptide sets
+    sw_list <- lapply(seq_along(same), function(i){
       
       sw_ordered[same[[i]]]
       
@@ -2286,277 +2388,323 @@ local({
     sw_list    <- sw_list[!duplicated(sw_list)]
     
     # if there are more than one sequence window per peptide group, 
-    # attribute shared peptides to the top sequence window (accomodates the majority of peptides)
+    # attribute shared peptides to the top sequence window
+    # (accomodates the majority of peptides)
     if(length(id_ordered) > 1){
       
       for(i in 2:length(id_ordered)){
         
-        id_ordered[[i]] <- id_ordered[[i]][!id_ordered[[i]] %in% unlist(id_ordered[1:(i-1)])]
+        id_ordered[[i]] <- id_ordered[[i]][!id_ordered[[i]] %in% 
+                                             unlist(id_ordered[1:(i-1)])]
         
       }
       
     }
     
     # prepare a data table
-    temp_df <- rbindlist(
+    df <- rbindlist(
       
       lapply(seq_along(id_ordered), function(i){
         
-        proteins <- unlist(stringr::str_split(sw_protein$Protein_single[sw_protein$seq_wind %in% sw_list[[i]]], ";"))
-        sites    <- unlist(stringr::str_split(sw_protein$ProSite_single[sw_protein$seq_wind %in% sw_list[[i]]], ";"))
+        proteins <- sw_protein$Protein_single[sw_protein$seq_wind %in% sw_list[[i]]]
+        sites    <- sw_protein$ProSite_single[sw_protein$seq_wind %in% sw_list[[i]]]
         
-        sites          <- paste0(sites[!duplicated(proteins)],    collapse = ";")
-        proteins       <- paste0(proteins[!duplicated(proteins)], collapse = ";")
+        proteins <- unlist(str_split(proteins, ";"))
+        sites    <- unlist(str_split(sites, ";"))
+        
+        sites    <- paste0(sites[!duplicated(proteins)],    collapse = ";")
+        proteins <- paste0(proteins[!duplicated(proteins)], collapse = ";")
         
         data.table(seq_wind = paste(sw_list[[i]], collapse = ";"),
                    Proteins = proteins,
                    ProSites = sites,
                    modpept_ids = paste(id_ordered[[i]], collapse = ";"))
         
-        
-        
       })
       
     )
     
-    # extend previous data table
-    df_sw          <- rbind(df_sw, temp_df)
-    
-    # remove ids that were used from the list
-    ids            <- ids[!ids %in% unique_ids] 
+    return(df)
     
   }
   
-  # convert factors to characters
-  df_sw[] <- lapply(df_sw, as.character)
+  # df_sw table combines sequence windows and
+  # modified peptides that explain those sequence windows
+  df_sw <- data.table()
+  while(length(ids) > 0){
+    
+    # find all peptides that form a group
+    aggregated_sw <- aggregateIds(list_ids, start_id = ids[1])
+    
+    # extract modpept ids belonging to the same group
+    unique_ids <- unique(unlist(list_ids[aggregated_sw]))
+    
+    # rank sequence windows and redistribute peptide ids accordingly
+    temp_df <- rankSeqWind(df_prot, aggregated_sw)
+    
+    # extend previous data table
+    df_sw <- rbind(df_sw, temp_df)
+    
+    # remove ids that were used from the list
+    ids <- ids[!ids %in% unique_ids] 
+    
+  }
+  
+  # # convert factors to characters
+  # df_sw[] <- lapply(df_sw, as.character)
   
   # reorder proteins based on their rank
-  temp <- lapply(seq_along(df_sw$seq_wind), function(i){
+  reorderProts <- function(dt, ranked_prots){
     
-    temp     <- df_sw[i, ]
-    temp[, Leading_Protein := NA]
-    temp[, Leading_ProSite := NA]
+    temp <- dt[, .(Proteins = unlist(str_split(Proteins, ";")),
+                   ProSites = unlist(str_split(ProSites, ";"))),
+               by = seq_wind]
+    temp <- merge(temp, ranked_prots[, c("Protein_single", "Protein_id")],
+                  by.x = "Proteins", by.y = "Protein_single")
+    temp <- temp[order(Protein_id, ProSites, seq_wind)]
+    temp <- temp[, .(Proteins = paste0(Proteins, collapse = ";"),
+                     ProSites = paste0(ProSites, collapse = ";")),
+                 by = seq_wind]
+    dt <- merge(df_sw[, -c("Proteins", "ProSites")], temp, by = "seq_wind")
+    dt[, Leading_Protein := str_match(Proteins, "^([^;]+)")[, 2]]
+    dt[, Leading_ProSite := str_match(ProSites, "^(\\d+)")[, 2]]
     
-    proteins <- unlist(strsplit(temp$Proteins, split = ";"))
-    sites    <- unlist(strsplit(temp$ProSites, split = ";"))
+    return(dt)
     
-    take     <- match(proteins, df_prot_single$Protein_single)
-    ranks    <- df_prot_single$Protein_id[take]
-    
-    proteins <- proteins[order(ranks)]
-    sites    <- sites[order(ranks)]
-    
-    sites    <- sites[!is.na(proteins)]
-    proteins <- proteins[!is.na(proteins)]
-    
-    temp[, Leading_Protein := ..proteins[1]]
-    temp[, Leading_ProSite := ..sites[1]]
-    
-    temp[, Proteins := paste0(..proteins, collapse = ";")]
-    temp[, ProSites := paste0(..sites,    collapse = ";")]
-    
-    return(temp)
-    
-  })
-  
-  df_sw <- rbindlist(temp)
+  }
+  df_sw <- reorderProts(dt = df_sw,
+                        ranked_prots = df_prot_single)
   
   # add sequence window information and re-ordered proteins to df_modpept
-  df_modpept2 <- df_sw[, list(modpept_id = unlist(strsplit(modpept_ids, split = ";"))), by = seq_wind]
-  df_modpept2 <- merge(df_modpept2, df_sw, by = "seq_wind") 
-  df_modpept2[, modpept_id := as.integer(df_modpept2$modpept_id)]
-  
-  df_modpept  <- merge(df_modpept[, -c("Proteins", "ProSite")], df_modpept2[, -c("modpept_ids")], by.x = "id", by.y = "modpept_id", all.x = TRUE)
-  
+  updateModpept <- function(modpept, sw){
+    
+    temp <- sw[, .(modpept_id = unlist(str_split(modpept_ids, ";"))),
+               by = seq_wind]
+    temp <- merge(temp, sw, by = "seq_wind") 
+    temp[, modpept_id := as.integer(temp$modpept_id)]
+    
+    modpept  <- merge(modpept[, -c("Proteins", "ProSite")],
+                      temp[, -c("modpept_ids")],
+                      by.x = "id", by.y = "modpept_id", all.x = TRUE)
+    
+    return(modpept)
+    
+  }
+  df_modpept <- updateModpept(df_modpept, df_sw)
   
   # combine intensities for glycoform
   # glycoform = distinct sequence window + specific Glycan structure
-  # distinct from df_modpept, because peptides containing missed cleavage sites will be combined 
+  # distinct from df_modpept,
+  # because peptides containing missed cleavage sites will be combined 
   
-  df_glycof_data  <- df_modpept[, lapply(.SD, paste, collapse = ";"), by = .(seq_wind, `Glycan(H,N,A,G,F)`),
-                                .SDcols = c("id", "Scan", "pGlyco_ids", "Peptide", "GlySite", "GlyID")]
-  # df_glycof_data2 <- df_modpept[, lapply(.SD, function(x) {
-  #   
-  #   glycotopes <- unlist(stringr::str_split(x, "[/;&]"))
-  #   glycotopes <- gsub(" ", "", glycotopes)
-  #   glycotopes <- glycotopes[!is.na(glycotopes) & glycotopes != ""]
-  #   glycotopes <- unique(glycotopes)
-  #   return(paste(glycotopes, collapse = ";"))
-  #   
-  # }), by = .(seq_wind, `Glycan(H,N,A,G,F)`), .SDcols = c("Glycotope_F", "Glycotope_A")]
-  df_glycof_data2 <- df_modpept[, .(Glycotope = unlist(Map(function(gf, ga, unf, una){
+  aggregateGlycotope <- function(data, by){
     
-    gf <- unlist(stringr::str_split(gf, "[/;]"))
-    ga <- unlist(stringr::str_split(ga, "[/;]"))
-    unf <- unlist(stringr::str_split(unf, "[/;]"))
-    una <- unlist(stringr::str_split(una, "[/;]"))
+    data <- data[, .(Glycotope = unlist(Map(function(gf, ga, unf, una){
+      
+        gf <- unlist(str_split(gf, "[/;]"))
+        ga <- unlist(str_split(ga, "[/;]"))
+        unf <- unlist(str_split(unf, "[/;]"))
+        una <- unlist(str_split(una, "[/;]"))
+        
+        glycotopes <- gf[unf != "+"]
+        glycotopes <- c(glycotopes, ga[una != "+"])
+        glycotopes <- unique(glycotopes)
+        glycotopes <- glycotopes[!is.na(glycotopes) &
+                                   glycotopes != "" & glycotopes != "NA"]
+        
+        return(paste(glycotopes, collapse = ";"))
+        
+      },
+      gf = Glycotope_F, ga = Glycotope_A,
+      unf = Glycotope_F_unmatched, una = Glycotope_A_unmatched))),
+      by = by]
     
-    glycotopes <- gf[unf != "+"]
-    glycotopes <- c(glycotopes, ga[una != "+"])
-    glycotopes <- unique(glycotopes)
-    glycotopes <- glycotopes[!is.na(glycotopes) & glycotopes != "" & glycotopes != "NA"]
+    data[!duplicated(data[, .SD, .SDcols = by])]
     
-    return(paste(glycotopes, collapse = ";"))
+  }
+  aggregateGlycoF    <- function(data, by){
     
-  }, gf = Glycotope_F, ga = Glycotope_A, unf = Glycotope_F_unmatched, una = Glycotope_A_unmatched))),
-  by = .(seq_wind, `Glycan(H,N,A,G,F)`)]
-  
-  df_glycof_data2 <- df_glycof_data2[!duplicated(df_glycof_data2[, c("seq_wind", "Glycan(H,N,A,G,F)")])]
-  df_glycof_data3 <- df_modpept[, head(.SD, 1),                       by = .(seq_wind, `Glycan(H,N,A,G,F)`), .SDcols = c("GlycanType", "GlycanAntennaType", "GlyMass", "Proteins", "ProSites", "Leading_Protein", "Leading_ProSite")]
-  df_glycof_int   <- df_modpept[, lapply(.SD, sum, na.rm = TRUE),     by = .(seq_wind, `Glycan(H,N,A,G,F)`), .SDcols = c(int_names, mion_names)]
-  
-  df_modpept[, .(Glycotope_F = paste(Glycotope_F, collapse = ";"),
-                 Glycotope_A = paste(Glycotope_A, collapse = ";"),
-                 Glycotope_F_unmatched = paste(Glycotope_F_unmatched, collapse = ";"),
-                 Glycotope_A_unmatched = paste(Glycotope_A_unmatched, collapse = ";")),
-             by = .(seq_wind, `Glycan(H,N,A,G,F)`)]
-  
-  df_glycof <- cbind(df_glycof_data,
-                     df_glycof_data2[, -c("seq_wind", "Glycan(H,N,A,G,F)")],
-                     df_glycof_data3[, -c("seq_wind", "Glycan(H,N,A,G,F)")],
-                     df_glycof_int[,   -c("seq_wind", "Glycan(H,N,A,G,F)")])
-  names(df_glycof)[names(df_glycof) == "id"] <- "modpept_ids"
-  df_glycof[, id := 1:df_glycof[, .N]]
-  df_glycof <- df_glycof[, .SD, .SDcols = c("id", names(df_glycof)[names(df_glycof) != "id"])]
-  
-  rm(list = c("df_glycof_data",
-              "df_glycof_data2",
-              "df_glycof_int"))
+    data_int  <- aggregateData(data = data,
+                               by = by,
+                               f = function(x) sum(x, na.rm = TRUE),
+                               cols = c(int_names, mion_names))
+    
+    data1 <- aggregateData(data = data,
+                           by = by,
+                           f = function(x) paste(x, collapse = ";"),
+                           cols = c("id", "Scan", "pGlyco_ids",
+                                    "Peptide", "GlySite", "GlyID"))
+    
+    data2 <- aggregateGlycotope(data = data,
+                                by = by)
+    
+    data3 <- aggregateData(data = data,
+                           by = by,
+                           f = function(x) head(x, 1),
+                           cols = c("GlycanType", "GlycanAntennaType",
+                                    "GlyMass", "Proteins",
+                                    "ProSites", "Leading_Protein",
+                                    "Leading_ProSite"))
+    
+    df <- cbind(data1,
+                data2[, .SD, .SDcols = !by],
+                data3[, .SD, .SDcols = !by],
+                data_int[, .SD, .SDcols = !by])
+    
+    # pGlyco_ids correspond to the row number of df_scans, df gets its own ids
+    names(df)[names(df) == "id"] <- "modpept_ids" 
+    df[, id := 1:.N]
+    df <- df[, .SD, .SDcols = c("id", Filter(function(x) x != "id", names(df)))]
+    return(df)
+    
+  }
+  df_glycof <- aggregateGlycoF(data = df_modpept,
+                               by = c("seq_wind", "Glycan(H.N.A.G.F)"))
   
   # combine intensities for glycosites
-  df_gsite_data  <- df_modpept[, lapply(.SD, paste, collapse = ";"), by = .(seq_wind), .SDcols = c("id", "Scan", "pGlyco_ids", "Peptide", "GlySite", "GlyID", "Glycan(H,N,A,G,F)", "GlycanType", "GlycanAntennaType", "GlyMass")]
-  df_gsite_data2 <- df_modpept[, .(Glycotope = unlist(Map(function(gf, ga, unf, una){
+  aggregateGlycoS <- function(data, by){
     
-    gf <- unlist(stringr::str_split(gf, "[/;]"))
-    ga <- unlist(stringr::str_split(ga, "[/;]"))
-    unf <- unlist(stringr::str_split(unf, "[/;]"))
-    una <- unlist(stringr::str_split(una, "[/;]"))
+    data_int  <- aggregateData(data = data,
+                               by = by,
+                               f = function(x) sum(x, na.rm = TRUE),
+                               cols = c(int_names, mion_names))
     
-    glycotopes <- gf[unf != "+"]
-    glycotopes <- c(glycotopes, ga[una != "+"])
-    glycotopes <- glycotopes[!is.na(glycotopes) & glycotopes != "" & glycotopes != "NA"]
-    glycotopes <- unique(glycotopes)
+    data1 <- aggregateData(data = data,
+                           by = by,
+                           f = function(x) paste(x, collapse = ";"),
+                           cols = c("id", "Scan", "pGlyco_ids", "Peptide",
+                                    "GlySite", "GlyID", "Glycan(H.N.A.G.F)",
+                                    "GlycanType", "GlycanAntennaType",
+                                    "GlyMass"))
     
-    return(paste(glycotopes, collapse = ";"))
+    data2 <- aggregateGlycotope(data = data,
+                                by = by)
     
-  }, gf = Glycotope_F, ga = Glycotope_A, unf = Glycotope_F_unmatched, una = Glycotope_A_unmatched))),
-  by = .(seq_wind)]
-  df_gsite_data2 <- df_gsite_data2[!duplicated(df_gsite_data2[, c("seq_wind")])]
-  
-  df_gsite_data3 <- df_modpept[, head(.SD, 1),                       by = .(seq_wind), .SDcols = c("Proteins", "ProSites", "Leading_Protein", "Leading_ProSite")]
-  df_gsite_int   <- df_modpept[, lapply(.SD, sum, na.rm = TRUE),     by = .(seq_wind), .SDcols = c(int_names, mion_names)]
-  
-  df_gsite <- cbind(df_gsite_data,
-                    df_gsite_data2[, -c("seq_wind")],
-                    df_gsite_data3[, -c("seq_wind")],
-                    df_gsite_int[, -c("seq_wind")])
-  names(df_gsite)[names(df_gsite) == "id"] <- "modpept_ids"
-  df_gsite[, id := 1:df_gsite[, .N]]
-  df_gsite <- df_gsite[, .SD, .SDcols = c("id", names(df_gsite)[names(df_gsite) != "id"])]
-  
-  # make a combined column of proteins and sites:
-  df_gsite[, Protein_Site := lapply(Map(function(x, y){
+    data3 <- aggregateData(data = data,
+                           by = by,
+                           f = function(x) head(x, 1),
+                           cols = c("Proteins", "ProSites",
+                                   "Leading_Protein", "Leading_ProSite"))
     
-    temp_x <- unlist(stringr::str_split(x, ";"))
-    temp_y <- unlist(stringr::str_split(y, ";"))
+    df <- cbind(data1,
+                data2[, .SD, .SDcols = !by],
+                data3[, .SD, .SDcols = !by],
+                data_int[, .SD, .SDcols = !by])
     
-    paste(temp_x, temp_y, sep = "_")
+    # pGlyco_ids correspond to the row number of df_scans, df gets its own ids
+    names(df)[names(df) == "id"] <- "modpept_ids" 
+    df[, id := 1:.N]
+    df <- df[, .SD, .SDcols = c("id", Filter(function(x) x != "id", names(df)))]
     
-  }, x = df_gsite$Proteins, y = df_gsite$ProSites), paste, collapse = ";")]
-  
-  
-  rm(list = c("df_gsite_data",
-              "df_gsite_data2",
-              "df_gsite_int"))
-  
+    # make a combined column of proteins and sites:
+    df[, Protein_Site := lapply(Map(function(x, y){
+      
+      temp_x <- unlist(str_split(x, ";"))
+      temp_y <- unlist(str_split(y, ";"))
+      
+      paste(temp_x, temp_y, sep = "_")
+      
+    }, x = Proteins, y = ProSites), paste, collapse = ";")]
+    
+    return(df)
+    
+  }
+  df_gsite <- aggregateGlycoS(data = df_modpept,
+                              by = c("seq_wind"))
+
   # combine intensities for glycans
-  
-  df_glycan_data  <- df_modpept[, lapply(.SD, paste, collapse = ";"),
-                                by = .(`Glycan(H,N,A,G,F)`),
-                                .SDcols = c("id",
-                                            "pGlyco_ids",
-                                            "Scan",
-                                            "Leading_Protein",
-                                            "Leading_ProSite")]
-  
-  df_glycan_data2 <- df_modpept[, .(Glycotope = unlist(Map(function(gf, ga, unf, una){
+  aggregateGlycan <- function(data, by){
     
-    gf <- unlist(stringr::str_split(gf, "[/;]"))
-    ga <- unlist(stringr::str_split(ga, "[/;]"))
-    unf <- unlist(stringr::str_split(unf, "[/;]"))
-    una <- unlist(stringr::str_split(una, "[/;]"))
+    data_int  <- aggregateData(data = data,
+                               by = by,
+                               f = function(x) sum(x, na.rm = TRUE),
+                               cols = c(int_names, mion_names))
     
-    glycotopes <- gf[unf != "+"]
-    glycotopes <- c(glycotopes, ga[una != "+"])
-    glycotopes <- glycotopes[!is.na(glycotopes) & glycotopes != "" & glycotopes != "NA"]
-    glycotopes <- unique(glycotopes)
+    data1 <- aggregateData(data = data,
+                           by = by,
+                           f = function(x) paste(x, collapse = ";"),
+                           cols = c("id",
+                                    "pGlyco_ids",
+                                    "Scan",
+                                    "Leading_Protein",
+                                    "Leading_ProSite"))
     
-    return(paste(glycotopes, collapse = ";"))
+    data2 <- aggregateGlycotope(data = data,
+                                by = by)
     
-  }, gf = Glycotope_F, ga = Glycotope_A, unf = Glycotope_F_unmatched, una = Glycotope_A_unmatched))),
-  by = .(`Glycan(H,N,A,G,F)`)]
-  df_glycan_data2 <- df_glycan_data2[!duplicated(df_glycan_data2[, c("Glycan(H,N,A,G,F)")])]
-  
-  df_glycan_data3 <- df_modpept[, head(.SD, 1), 
-                                by = .(`Glycan(H,N,A,G,F)`),
-                                .SDcols = c("GlyID",
-                                            "GlycanType",
-                                            "GlycanAntennaType",
-                                            "PlausibleStruct",
-                                            "GlyFrag",
-                                            "GlyMass")]
-  
-  df_glycan_int   <- df_modpept[, lapply(.SD, sum, na.rm = TRUE),
-                                by = .(`Glycan(H,N,A,G,F)`),
-                                .SDcols = c(int_names, mion_names)]
-  df_glycan <- cbind(df_glycan_data,
-                     df_glycan_data2[, -c("Glycan(H,N,A,G,F)")],
-                     df_glycan_data3[, -c("Glycan(H,N,A,G,F)")],
-                     df_glycan_int  [, -c("Glycan(H,N,A,G,F)")])
-  names(df_glycan)[names(df_glycan) == "id"] <- "modpept_ids"
-  df_glycan$id <- 1:df_glycan[, .N]
-  df_glycan <- df_glycan[, .SD, .SDcols = c("id", names(df_glycan)[names(df_glycan) != "id"])]
-  
-  rm(list = c("df_glycan_data",
-              "df_glycan_data2",
-              "df_glycan_int"))
+    data3 <- aggregateData(data = data,
+                           by = by,
+                           f = function(x) head(x, 1),
+                           cols = c("GlyID",
+                                    "GlycanType",
+                                    "GlycanAntennaType",
+                                    "PlausibleStruct",
+                                    "GlyFrag",
+                                    "GlyMass"))
+    
+    df <- cbind(data1,
+                data2[, .SD, .SDcols = !by],
+                data3[, .SD, .SDcols = !by],
+                data_int[, .SD, .SDcols = !by])
+    
+    # pGlyco_ids correspond to the row number of df_scans, df gets its own ids
+    names(df)[names(df) == "id"] <- "modpept_ids" 
+    df[, id := 1:.N]
+    df <- df[, .SD, .SDcols = c("id", Filter(function(x) x != "id", names(df)))]
+    return(df)
+    
+  }
+  df_glycan <- aggregateGlycan(data = df_modpept,
+                               by = c("Glycan(H.N.A.G.F)"))
   
   # combine intensities for glycotopes
-  # temp <- df_scans[, list(Glycotope = unlist(stringr::str_split(Glycotope, "&"))), by = "id"]
-  # temp[, Glycotope := gsub(" ", "", Glycotope)]
+  aggregateGTop <- function(data, by, base_glycotopes){
+    
+    temp <- rbind(data[, .(Glycotope = Glycotope_F,
+                           Glycotope_unmatched = Glycotope_F_unmatched),
+                       by = "id"],
+                  data[, .(Glycotope = Glycotope_A,
+                           Glycotope_unmatched = Glycotope_A_unmatched),
+                       by = "id"])
+    temp <- temp[!is.na(Glycotope) & Glycotope != ""]
+    temp <- temp[Glycotope_unmatched != "+"]
+    temp <- merge(temp, data[, -c("Glycotope_F", "Glycotope_A",
+                                  "Glycotope_F_unmatched",
+                                  "Glycotope_A_unmatched")],
+                  by = "id", all.x = TRUE)
+    
+    data_int  <- aggregateData(data = temp,
+                               by = by,
+                               f = function(x) sum(x, na.rm = TRUE),
+                               cols = c(int_names, mion_names))
+    
+    data1 <- aggregateData(data = temp,
+                           by = by,
+                           f = function(x) paste(x, collapse = ";"),
+                           cols = c("id"))
+    
+    df <- cbind(data1,
+                data_int[, .SD, .SDcols = !by])
+    
+    missing_glycotopes <- base_glycotopes[!base_glycotopes %in% df$Glycotope]
+    missing_glycotopes <- data.table(Glycotope = missing_glycotopes)
+    df <- rbind(df, missing_glycotopes, fill = TRUE)
+    df[, Glycotope := factor(Glycotope, levels = ..base_glycotopes)]
+    df <- df[order(Glycotope)]
+    
+    # pGlyco_ids correspond to the row number of df_scans, df gets its own ids
+    names(df)[names(df) == "id"] <- "pGlyco_ids" 
+    df[, id := 1:.N]
+    df <- df[, .SD, .SDcols = c("id", Filter(function(x) x != "id", names(df)))]
+    
+    return(df)
+    
+    }
+  df_glycotope  <- aggregateGTop(data = df_scans,
+                                 by = "Glycotope",
+                                 base_glycotopes = base_glycotopes)
   
-  temp <- rbind(df_scans[, .(Glycotope = Glycotope_F,
-                             Glycotope_unmatched = Glycotope_F_unmatched), by = "id"],
-                df_scans[, .(Glycotope = Glycotope_A,
-                             Glycotope_unmatched = Glycotope_A_unmatched), by = "id"])
-  temp <- temp[!is.na(Glycotope) & Glycotope != ""]
-  temp <- temp[Glycotope_unmatched != "+"]
-  temp <- merge(temp, df_scans[, -c("Glycotope_F", "Glycotope_A", "Glycotope_F_unmatched", "Glycotope_A_unmatched")], by = "id", all.x = TRUE)
-  
-  df_glycotope_data  <- temp[, lapply(.SD, paste, collapse = ";"),
-                             by = .(Glycotope),
-                             .SDcols = c("id")]
-  
-  df_glycotope_int   <- temp[, lapply(.SD, sum, na.rm = TRUE),
-                             by = .(Glycotope),
-                             .SDcols = c(int_names, mion_names)]
-  df_glycotope <- cbind(df_glycotope_data,
-                        df_glycotope_int  [, -c("Glycotope")])
-  
-  df_glycotope <- rbind(df_glycotope,
-                        data.table(Glycotope = base_glycotopes[!base_glycotopes %in% df_glycotope$Glycotope]),
-                        fill = TRUE)
-  df_glycotope[, Glycotope := factor(Glycotope, levels = ..base_glycotopes)]
-  df_glycotope <- df_glycotope[order(Glycotope)]
-  #df_glycotope <- df_glycotope[!is.na(Glycotope) & Glycotope != ""]
-  
-  names(df_glycotope)[names(df_glycotope) == "id"] <- "pGlyco_ids"
-  df_glycotope[, id := 1:.N]
-  df_glycotope <- df_glycotope[, .SD, .SDcols = c("id", names(df_glycotope)[names(df_glycotope) != "id"])]
-  
-  rm(list = c("df_glycotope_data",
-              "df_glycotope_int"))
-  
+  # output tables
   dat <- list(
     
     scans   = df_scans,
@@ -2568,7 +2716,7 @@ local({
     
   )
   
-  ##### check fucosylation #####
+  # check fucosylation
   use_tables <- c("sites", "gforms", "glycans")
   for(i in use_tables){
     
@@ -2578,7 +2726,7 @@ local({
     
   }
   
-  ##### Add parent peak area #####
+  # Add parent peak area 
   scans <- df_scans[ParentPeakFound == TRUE] 
   use_tables <- c("modpept", "sites", "gforms", "glycans", "glycotopes")
   for(i in use_tables){
