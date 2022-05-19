@@ -1041,7 +1041,8 @@ if(!all(file.exists(paste0("rawtools_output\\",
     RawTools_args    <- c('-parse',
                           '-d', paste0('"', wd, '"'),
                           '-out', paste0('"', wd, '/rawtools_output', '"'),
-                          '-R', '-u')
+                          '-R', '-u',
+                          '-k ', nr_threads)
     
     if(reporter_ion != "not_labeled"){
       
