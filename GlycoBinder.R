@@ -120,7 +120,8 @@ collectArgs <- function(arg, collection, default = NA,
   
 }
 
-checkOutput <- function(){
+checkOutput <- function(raw_file_names,
+                        contain_ms3){
   
   rawtools_output <- paste0(raw_file_names, "_Matrix.txt")
   rawtools_output <- paste0("rawtools_output/", rawtools_output)
@@ -134,8 +135,8 @@ checkOutput <- function(){
   rt_mgf_output <- c(rt_mgf_output,
                      paste0(raw_file_names[contain_ms3], "_MS3.mgf"))
   rt_mgf_output <- paste0("rawtools_mgf/", rt_mgf_output)
-  output_mgf_exists <<- output_msconvert_exists |
-    all(file.exists(rt_mgf_output))
+  output_mgf_exists <- output_msconvert_exists
+  output_mgf_exists <<- output_mgf_exists | all(file.exists(rt_mgf_output))
   
   pparse_mod <- gsub("\\.raw$", "_pParse_mod.mgf", raw_file_names)
   pparse_mod <- paste0("pparse_output/", pparse_mod)
@@ -155,7 +156,7 @@ checkOutput <- function(){
   output_pglyco2_exists   <<- any(grepl("-Pro2.txt",
                                         list.files(path = "pglyco_output")))
   
-  return("")
+  return("\n")
   
 }
 
@@ -205,6 +206,73 @@ readMgf    <- function(path){
                         start = start.positions,
                         end = (ions.positions-1),
                         MoreArgs = list(mgf = mgf[[1]]))
+  ions <- Map(function(mgf, start, end){
+    
+    temp <- matrix(as.numeric(str_split_fixed(mgf[start:end], " ", n = 2)),
+                   ncol = 2, byrow = FALSE)
+    temp <- subset(temp, temp[, 2] != 0)
+    return(temp)
+    
+    
+  }, 
+  start = ions.positions,
+  end = (end.positions - 1),
+  MoreArgs = list(mgf = mgf[[1]]))
+  
+  data.table(scan_start  = start.positions,
+             scan_end    = end.positions,
+             ions_start  = ions.positions,
+             scan_number = mgf_scan_nr,
+             scan_header = scan_headers,
+             ions        = ions,
+             key         = "scan_number")
+  
+}
+readMgfRT  <- function(path){
+  
+  # function reads mgf file from RawTools into a data table of scans
+  # scans are separated  based on "BEGIN IONS" and "END IONS" lines
+  # Data table contains:
+  # scan_start = line number of "BEGIN IONS" string
+  # scan_end = line number of "END IONS" string
+  # ions_start = line number from which ion information starts
+  # scan_number = number of the scan
+  # scan_header = entire scan header as a character verctor
+  # ions = matrix of ions m/z and corresponding intensities
+  
+  mgf             <- fread(file = path, header = FALSE,
+                           sep = NULL, colClasses = "character")
+  start.positions <- str_which(mgf[[1]], "^BEGIN IONS$")
+  end.positions   <- str_which(mgf[[1]], "^END IONS$")
+  mgf_scan_nr     <- as.integer(str_match(str_subset(mgf[[1]], "^SCANS="),
+                                          "SCANS=(\\d+)")[, 2])
+  
+  ionsBegin <- function(mgf, start, end){
+    
+    str_which(mgf[start:end], "^[0-9.]+\\s[0-9.]+$")[1] + (start - 1)
+    
+  }
+  
+  # determine ion positions
+  ions.positions <- unlist(Map(ionsBegin,
+                               start = start.positions,
+                               end = end.positions,
+                               MoreArgs = list(mgf = mgf[[1]])))
+  
+  # remove empty scans
+  if(any(is.na(ions.positions))){
+    
+    start.positions <- start.positions[!is.na(ions.positions)]
+    end.positions   <- end.positions[!is.na(ions.positions)]
+    mgf_scan_nr     <- mgf_scan_nr[!is.na(ions.positions)]
+    ions.positions  <- ions.positions[!is.na(ions.positions)]
+    
+  }
+  
+  scan_headers <- Map(function(mgf, start, end) mgf[start:end],
+                      start = start.positions,
+                      end = (ions.positions-1),
+                      MoreArgs = list(mgf = mgf[[1]]))
   ions <- Map(function(mgf, start, end){
     
     temp <- matrix(as.numeric(str_split_fixed(mgf[start:end], " ", n = 2)),
@@ -726,6 +794,7 @@ pglyco_fdr_threshold      <- 0.02
 report_intermediate_files <- FALSE
 skip_marker_ions          <- FALSE
 parent_area_fun           <- "sum"
+second_search             <- TRUE
 
 ##### collect arguments and set working directory #####
 args <- (commandArgs(TRUE))
@@ -1014,7 +1083,9 @@ for(i in seq_along(raw_file_names)){
 
 # check should be performed after the raw tools processing is finished
 # because it finds out which raw files contain MS3 scans
-checkOutput()
+
+checkOutput(raw_file_names,
+            contain_ms3)
 
 ##### prepare MGF #####
 
@@ -1024,20 +1095,13 @@ if(any(contain_ms3) && # there are files with ms3 spectra
    !output_mgf_exists &&
    
    # pParse_mod.mgf do not exist
-   !output_pparsemod_exists &&
-   
-   # no second search and no pglyco 1 ouput or
-   # second search and no pglyco 2 output
-   ((!second_search && !output_pglyco1_exists) ||                  
-    (second_search  && !output_pglyco2_exists))
+   !output_pparsemod_exists 
    
 ){
   
   # any(contain_ms3) == TRUE
   # output_mgf_exists == FALSE
   # output_pparsemod_exists == FALSE
-  # either second_search == FALSE & output_pglyco1_exists == FALSE or
-  # or     second_search == TRUE  & output_pglyco2_exists == FALSE
   
   if(rawtools_mgf){
     
@@ -1051,8 +1115,8 @@ if(any(contain_ms3) && # there are files with ms3 spectra
       files_to_process <- raw_file_names[contain_ms3]
       
       RawTools_args    <- c('-f', paste0('"', files_to_process, '"'),
-                            '-out', paste0('"', wd, '/MGF', '"'),
-                            '-ml 123')
+                            '-out', paste0('"', wd, '/rawtools_mgf', '"'),
+                            '-ml 23')
       
       if(verbose) message("Arguments:\n", paste(RawTools_args, collapse = "\n"))
       
@@ -1072,7 +1136,7 @@ if(any(contain_ms3) && # there are files with ms3 spectra
 
       local({
     
-        if(!dir.exists("msconvert_output"))  dir.create("msconvert_output")
+        if(!dir.exists("msconvert_output")) dir.create("msconvert_output")
         
         ptm <- proc.time()
         message("\n ***** Run msconvert ***** \n")
@@ -1320,8 +1384,9 @@ if(!output_pparse_exists && !output_pparsemod_exists){
 
 ##### check output #####
 
+checkOutput(raw_file_names,
+            contain_ms3)
 
-checkOutput()
 if(!output_pparse_exists &&
    !output_pparsemod_exists) stop("Not all pParse output files found.
                                    Check pParse log file")
@@ -1556,8 +1621,20 @@ if(any(contain_ms3) && !all(file.exists(pparse_mod_files))){
       # read matrix file
       mtx <- fread(paste0("rawtools_output/", file_name, "_Matrix.txt"))
       
-      # read mgf file (msconvert output)
-      mgf_tab <- readMgf(paste0("msconvert_output/", file_name_core, ".mgf"))
+      if(rawtools_mgf){
+        
+        ms2_mgf <- paste0("rawtools_mgf/", file_name, "_Ms2.mgf")
+        ms3_mgf <- paste0("rawtools_mgf/", file_name, "_Ms3.mgf")
+        
+        mgf_tab <- rbind(readMgfRT(ms2_mgf),
+                         readMgfRT(ms3_mgf))
+        
+      } else {
+          
+        # read mgf file (msconvert output)
+        mgf_tab <- readMgf(paste0("msconvert_output/", file_name_core, ".mgf"))
+        
+      }
       
       invisible(  
         merge_ms2_ms3(mgf_tab = mgf_tab,
