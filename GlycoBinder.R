@@ -120,6 +120,45 @@ collectArgs <- function(arg, collection, default = NA,
   
 }
 
+checkOutput <- function(){
+  
+  rawtools_output <- paste0(raw_file_names, "_Matrix.txt")
+  rawtools_output <- paste0("rawtools_output/", rawtools_output)
+  output_rawtools_exists <<- all(file.exists(rawtools_output))
+  
+  msconv_output <- gsub("\\.raw$", "\\.mgf", raw_file_names[contain_ms3])
+  msconv_output <- paste0("msconvert_output/", msconv_output)
+  output_msconvert_exists <- all(file.exists(msconv_output))
+  
+  rt_mgf_output <- paste0(raw_file_names[contain_ms3], "_MS2.mgf")
+  rt_mgf_output <- c(rt_mgf_output,
+                     paste0(raw_file_names[contain_ms3], "_MS3.mgf"))
+  rt_mgf_output <- paste0("rawtools_mgf/", rt_mgf_output)
+  output_mgf_exists <<- output_msconvert_exists |
+    all(file.exists(rt_mgf_output))
+  
+  pparse_mod <- gsub("\\.raw$", "_pParse_mod.mgf", raw_file_names)
+  pparse_mod <- paste0("pparse_output/", pparse_mod)
+  output_pparse_exists <<- all(file.exists(pparse_mod))
+  
+  pparse_out <- list.files(path = "pparse_output", pattern = "_[A-Z]+FT\\.mgf")
+  pparse_out <- gsub("_[A-Z]+FT\\.mgf", "", pparse_out)
+  output_pparse_exists <<- all(gsub("\\.raw$", "", raw_file_names) %in%
+                                 pparse_out)
+  
+  pparsemod_out <- gsub("\\.raw$", "_pParse_mod.mgf", raw_file_names)
+  pparsemod_out <- paste0("pparse_output/", pparsemod_out)
+  output_pparsemod_exists <<- all(file.exists(pparsemod_out))
+  
+  output_pglyco1_exists   <<- any(grepl("-Pro.txt$",
+                                        list.files(path = "pglyco_output")))
+  output_pglyco2_exists   <<- any(grepl("-Pro2.txt",
+                                        list.files(path = "pglyco_output")))
+  
+  return("")
+  
+}
+
 # read MGF files
 readMgf    <- function(path){
   
@@ -565,6 +604,9 @@ plan_strategy <- "multisession"
 decoy_expr <- "^REV_"   # decoy sequences 
 pglyco_sep <- "/"       # separator in pGlyco
 
+# mgf converter
+rawtools_mgf <- FALSE
+
 # default config file for pGlyco
 pglyco_config_default <- c("[version]",
                            "pGlyco_version=pGlyco_Tag20190101",
@@ -828,6 +870,17 @@ if(any(grepl("--report_intermediate_files", args))){
 # skip search for marker ions
 if(any(grepl("--skip_marker_ions", args))) skip_marker_ions <- TRUE
 
+# use rawtools for mgf conversion
+if(any(grepl("--rawtools_mgf", args))){
+  
+    rawtools_mgf <- TRUE 
+  
+  } else {
+    
+    rawtools_mgf <- FALSE
+    
+  }
+
 
 ##### read fasta file #####
 local({
@@ -961,38 +1014,14 @@ for(i in seq_along(raw_file_names)){
 
 # check should be performed after the raw tools processing is finished
 # because it finds out which raw files contain MS3 scans
-local({
-  
-  msconv_output <- gsub("\\.raw$", "\\.mgf",raw_file_names[contain_ms3])
-  msconv_output <- paste0("msconvert_output/", msconv_output)
-  output_msconvert_exists <<- all(file.exists(msconv_output))
-  
-  pparse_mod <- gsub("\\.raw$", "_pParse_mod.mgf", raw_file_names)
-  pparse_mod <- paste0("pparse_output/", pparse_mod)
-  output_pparse_exists <<- all(file.exists(pparse_mod))
-  
-  pparse_out <- list.files(path = "pparse_output", pattern = "_[A-Z]+FT\\.mgf")
-  pparse_out <- gsub("_[A-Z]+FT\\.mgf", "", pparse_out)
-  output_pparse_exists <<- all(gsub("\\.raw$", "", raw_file_names) %in%
-                                 pparse_out)
-  
-  pparsemod_out <- gsub("\\.raw$", "_pParse_mod.mgf", raw_file_names)
-  pparsemod_out <- paste0("pparse_output/", pparsemod_out)
-  output_pparsemod_exists <<- all(file.exists(pparsemod_out))
-  
-  output_pglyco1_exists   <<- any(grepl("-Pro.txt$",
-                                        list.files(path = "pglyco_output")))
-  output_pglyco2_exists   <<- any(grepl("-Pro2.txt",
-                                        list.files(path = "pglyco_output")))
+checkOutput()
 
-})
-
-##### run MSConvert #####
+##### prepare MGF #####
 
 if(any(contain_ms3) && # there are files with ms3 spectra 
    
    # mgf files for ms3 spectra containing raw files do not exist
-   !output_msconvert_exists &&
+   !output_mgf_exists &&
    
    # pParse_mod.mgf do not exist
    !output_pparsemod_exists &&
@@ -1005,104 +1034,140 @@ if(any(contain_ms3) && # there are files with ms3 spectra
 ){
   
   # any(contain_ms3) == TRUE
-  # output_msconvert_exists == FALSE
+  # output_mgf_exists == FALSE
   # output_pparsemod_exists == FALSE
   # either second_search == FALSE & output_pglyco1_exists == FALSE or
   # or     second_search == TRUE  & output_pglyco2_exists == FALSE
   
-  local({
+  if(rawtools_mgf){
     
-    if(!dir.exists("msconvert_output"))  dir.create("msconvert_output")
+    local({
+      
+      ptm <- proc.time()
+      message("\n ***** Prepare MGF by Rawtools ***** \n")
+      if(!dir.exists("rawtools_mgf"))  dir.create("rawtools_mgf")
+      
+      # file names to process
+      files_to_process <- raw_file_names[contain_ms3]
+      
+      RawTools_args    <- c('-f', paste0('"', files_to_process, '"'),
+                            '-out', paste0('"', wd, '/MGF', '"'),
+                            '-ml 123')
+      
+      if(verbose) message("Arguments:\n", paste(RawTools_args, collapse = "\n"))
+      
+      # run
+      system2(command = "C:\\Program Files\\RawTools-2.0.7\\RawTools.exe", args = RawTools_args, wait = TRUE)
+      
+      if(verbose) print(proc.time() - ptm)
+      writeLog(log_gb, new1 = paste0("Prepare MGF by Rawtools"),
+               new2 = c(paste0("user: ", round((proc.time() - ptm)[1], 4)),
+                        paste0("system: ", round((proc.time() - ptm)[2], 4)),
+                        paste0("elapsed: ", round((proc.time() - ptm)[3], 4))))
+      
+      })
     
-    ptm <- proc.time()
-    message("\n ***** Run msconvert ***** \n")
     
-    run_msconvert <- function(file_name, out_dir){
-      
-      # Function runs msconvert through a system call
-      # Arguments:
-      # file_name = name of the file
-      # out_idr = output directory
-      # Value:
-      # NULL
-      
-      wd <- getwd()
-      
-      # prepare system calls
-      msConvert_args <- paste(paste0('"', file_name, '"'), '--outdir',
-                              paste0('"', wd, '/msconvert_output', '"'),
-                              '--mgf', '--ignoreUnknownInstrumentError',
-                              '--singleThreaded', '--filter',
-                              paste0('"', 'peakPicking vendor','"'), '--filter',
-                              paste0('"', 'defaultArrayLength 1-', '"'),
-                              '--filter',
-                              paste0('"', 'titleMaker <RunId>.<ScanNumber>.<ScanNumber>.<ChargeState>', '"'),
-                              collapse = " ")
-      
-      shell(cmd = paste("msconvert", msConvert_args, '& echo "done" >>',
-                        paste0('"', out_dir, '/msconvert_done.txt', '"'),
-                        collapse = " "), wait = FALSE, ignore.stdout = TRUE)
-      
-      
-    }
+    } else {
+
+      local({
     
-    # file names to process
-    files_to_process <- raw_file_names[contain_ms3]
-    
-    # number of files to process
-    nr_files <- length(files_to_process)
-    
-    # maximum iterations given the number of available threads and number of files to process
-    max_iterations <- ceiling(nr_files/nr_threads)
-    if(is.na(max_iterations) || max_iterations < 1) stop("Wrong number of max_iterations")
-    
-    processes <- 0
-    for(i in 1:max_iterations){
-      
-      processes <- (max(processes) + 1) : min(i*nr_threads, nr_files)
-      
-      if(verbose) message("msConvert processes\n", paste(files_to_process[processes], collapse = "\n"))
-      
-      for(j in processes){
+        if(!dir.exists("msconvert_output"))  dir.create("msconvert_output")
         
-        out_dir <- paste0(wd, "/msconvert_output/msconvert_process", j)
-        dir.create(out_dir, showWarnings = verbose)
+        ptm <- proc.time()
+        message("\n ***** Run msconvert ***** \n")
         
-        run_msconvert(file_name = files_to_process[j], out_dir = out_dir)
+        run_msconvert <- function(file_name, out_dir){
+          
+          # Function runs msconvert through a system call
+          # Arguments:
+          # file_name = name of the file
+          # out_idr = output directory
+          # Value:
+          # NULL
+          
+          wd <- getwd()
+          
+          # prepare system calls
+          msConvert_args <- paste(paste0('"', file_name, '"'), '--outdir',
+                                  paste0('"', wd, '/msconvert_output', '"'),
+                                  '--mgf', '--ignoreUnknownInstrumentError',
+                                  '--singleThreaded', '--filter',
+                                  paste0('"', 'peakPicking vendor','"'), '--filter',
+                                  paste0('"', 'defaultArrayLength 1-', '"'),
+                                  '--filter',
+                                  paste0('"', 'titleMaker <RunId>.<ScanNumber>.<ScanNumber>.<ChargeState>', '"'),
+                                  collapse = " ")
+          
+          shell(cmd = paste("msconvert", msConvert_args, '& echo "done" >>',
+                            paste0('"', out_dir, '/msconvert_done.txt', '"'),
+                            collapse = " "), wait = FALSE, ignore.stdout = TRUE)
+          
+          
+        }
         
-      }
-      
-      while(any(!file.exists(paste0(wd,"/msconvert_output/msconvert_process", processes, "/msconvert_done.txt")))){
+        # file names to process
+        files_to_process <- raw_file_names[contain_ms3]
         
-        #if(verbose) {
+        # number of files to process
+        nr_files <- length(files_to_process)
         
-        cat(".")
+        # maximum iterations given the number of available threads
+        # and number of files to process
+        max_iterations <- ceiling(nr_files/nr_threads)
         
-        #} 
+        processes <- 0
+        for(i in 1:max_iterations){
+          
+          processes <- (max(processes) + 1) : min(i*nr_threads, nr_files)
+          
+          if(verbose) message("msConvert processes\n",
+                              paste(files_to_process[processes],
+                                    collapse = "\n"))
+          
+          for(j in processes){
+            
+            out_dir <- paste0(wd, "/msconvert_output/msconvert_process", j)
+            dir.create(out_dir, showWarnings = verbose)
+            
+            run_msconvert(file_name = files_to_process[j], out_dir = out_dir)
+            
+          }
+          
+          while(any(!file.exists(paste0(wd,"/msconvert_output/msconvert_process",
+                                        processes, "/msconvert_done.txt")))){
+            
+            #if(verbose) {
+            
+            cat(".")
+            
+            #} 
+            
+            Sys.sleep(2)
+            
+          }
+          cat("\n")
+          
+        }
         
-        Sys.sleep(2)
+        # remove created folders
+        list_dirs <- list.dirs(path = "msconvert_output", recursive = FALSE)
+        to_delete <- list_dirs[grepl("msconvert_process[0-9]+", list_dirs)]
+        unlink(to_delete, recursive = TRUE)
         
-      }
-      cat("\n")
-      
-    }
-    
-    # remove created folders
-    list_dirs <- list.dirs(path = "msconvert_output", recursive = FALSE)
-    to_delete <- list_dirs[grepl("msconvert_process[0-9]+", list_dirs)]
-    unlink(to_delete, recursive = TRUE)
-    
-    if(verbose) print(proc.time() - ptm)
-    writeLog(log_gb, new1 = paste0("Run msconvert"),
-             new2 = c(paste0("user: ", round((proc.time() - ptm)[1], 4)),
-                      paste0("system: ", round((proc.time() - ptm)[2], 4)),
-                      paste0("elapsed: ", round((proc.time() - ptm)[3], 4))))
+        if(verbose) print(proc.time() - ptm)
+        writeLog(log_gb, new1 = paste0("Run msconvert"),
+                 new2 = c(paste0("user: ", round((proc.time() - ptm)[1], 4)),
+                          paste0("system: ", round((proc.time() - ptm)[2], 4)),
+                          paste0("elapsed: ", round((proc.time() - ptm)[3], 4))))
     
   })
+      
+    }
   
 } else {
   
-  message("Skip MSConvert processing")
+  message("Skip MGF preparation")
   
 }
 
@@ -1119,7 +1184,8 @@ if(!output_pparse_exists && !output_pparsemod_exists){
     
     if(!dir.exists("pparse_output"))  dir.create("pparse_output")
     
-    message("\nrun pParse")
+    ptm <- proc.time()
+    message("\n ***** run pParse ***** \n")
     
     run_pparse    <- function(file_name, out_dir, pparse_path){
       
@@ -1138,16 +1204,23 @@ if(!output_pparse_exists && !output_pparsemod_exists){
       setwd(pparse_path)
       
       # prepare system calls
-      cmd_pparse  <- paste('pParse.exe', '-D', paste0('"', normalizePath(wd), '\\', file_name, '"'), '-O', paste0('"', normalizePath(wd), '\\pparse_output', '"'), '-p', '0')
+      cmd_pparse  <- paste('pParse.exe', '-D',
+                           paste0('"', normalizePath(wd), '\\', file_name, '"'),
+                           '-O',
+                           paste0('"', normalizePath(wd), '\\pparse_output', '"'),
+                           '-p', '0')
       
-      shell(cmd = paste0(cmd_pparse, ' & echo "done" >> ', '"', out_dir, '/pparse_done.txt', '"'), wait = FALSE, ignore.stdout = TRUE)
+      shell(cmd = paste0(cmd_pparse, ' & echo "done" >> ',
+                         '"', out_dir, '/pparse_done.txt', '"'),
+            wait = FALSE, ignore.stdout = TRUE)
       
       # switch back to the original directory
       setwd(wd)
       
     }
     
-    # for pParse we need to find a path where the pParse is located and then set wd to its location
+    # for pParse we need to find a path where the pParse is located and
+    # then set wd to its location
     # afterwards we can change the wd back to the location of the raw files
     
     pparse_path <- system2("where", args = "pparse", stdout = TRUE)
@@ -1163,9 +1236,9 @@ if(!output_pparse_exists && !output_pparsemod_exists){
     # file names to process
     files_to_process <- raw_file_names
     
-    # maximum iterations given the number of available threads and number of files to process
+    # maximum iterations given the number of available threads
+    # and the number of files to process
     max_iterations <- ceiling(nr_files/nr_threads)
-    if(is.na(max_iterations) || max_iterations < 1) stop("Wrong number of max_iterations")
     
     processes <- 0
     for(i in 1:max_iterations){
@@ -1181,7 +1254,8 @@ if(!output_pparse_exists && !output_pparsemod_exists){
         
         if(!dir.exists(out_dir)) dir.create(out_dir, showWarnings = verbose)
         
-        run_pparse(file_name = files_to_process[j], out_dir = out_dir, pparse_path = pparse_path)
+        run_pparse(file_name = files_to_process[j],
+                   out_dir = out_dir, pparse_path = pparse_path)
         
       }
       
@@ -1211,6 +1285,8 @@ if(!output_pparse_exists && !output_pparsemod_exists){
     
   }
   
+  
+  
   if(!report_intermediate_files){
     
     suppressWarnings(
@@ -1218,16 +1294,22 @@ if(!output_pparse_exists && !output_pparsemod_exists){
       invisible(
         
         file.remove(paste0("pparse_output/",
-                           c(gsub("\\.raw$", ".xtract", raw_file_names),      # pParse xtract file
-                             gsub("\\.raw$", ".ms1", raw_file_names),         # pParse ms1 
-                             gsub("\\.raw$", ".ms2", raw_file_names),         # pParse ms2  
-                             gsub("\\.raw$", ".csv", raw_file_names)          # pparse csv  
+                           c(gsub("\\.raw$", ".xtract", raw_file_names), # pParse xtract file
+                             gsub("\\.raw$", ".ms1", raw_file_names),    # pParse ms1 
+                             gsub("\\.raw$", ".ms2", raw_file_names),    # pParse ms2  
+                             gsub("\\.raw$", ".csv", raw_file_names)     # pparse csv  
                            )))
         
       )
     )
     
   }
+  
+  if(verbose) print(proc.time() - ptm)
+  writeLog(log_gb, new1 = paste0("run pParse"),
+           new2 = c(paste0("user: ", round((proc.time() - ptm)[1], 4)),
+                    paste0("system: ", round((proc.time() - ptm)[2], 4)),
+                    paste0("elapsed: ", round((proc.time() - ptm)[3], 4))))
   
 } else {
   
@@ -1236,54 +1318,23 @@ if(!output_pparse_exists && !output_pparsemod_exists){
 }
 
 
-# check pParse output
+##### check output #####
 
-local({
-  
-  ptm <- proc.time()
-  message("\n ***** run pParse ***** \n")
-    
-  pparse_out <- list.files(path = "pparse_output", pattern = "_[A-Z]+FT\\.mgf")
-  pparse_out <- gsub("_[A-Z]+FT\\.mgf", "", pparse_out)
-  output_pparse_exists <<- all(gsub("\\.raw$", "", raw_file_names) %in%
-                                 pparse_out)
-  if(!output_pparse_exists &&
-     !output_pparsemod_exists) stop("Not all pParse output files found.
-                                    Check pParse log file")
-  
-  if(verbose) message("Found FT.mgf files\n",
-                      paste(list.files(pattern = "_[A-Z]+FT\\.mgf"),
-                            collapse = "\n"))
-  
-  # check RawTools output
-  rawtools_out <- paste0("rawtools_output\\", raw_file_names, "_Matrix.txt")
-  output_rawtools_exists  <<- all(file.exists(rawtools_out))
-  if(!output_rawtools_exists) stop("Not all _Matrix.txt files found.
+
+checkOutput()
+if(!output_pparse_exists &&
+   !output_pparsemod_exists) stop("Not all pParse output files found.
+                                   Check pParse log file")
+if(!output_rawtools_exists) stop("Not all _Matrix.txt files found.
                                    Check RawTools log file.")
-  
-  if(verbose) message("Found _Matrix.txt files\n",
-                      paste(list.files(pattern = "_Matrix\\.txt"),
-                            collapse = "\n"))
-  
-  # check MSconvert output
-  msconv_output <- gsub("\\.raw$", "\\.mgf",raw_file_names[contain_ms3])
-  msconv_output <- paste0("msconvert_output/", msconv_output)
-  output_msconvert_exists <<- all(file.exists(msconv_output))
-  if(any(contain_ms3) && !output_msconvert_exists && !output_pparsemod_exists &&
-     ((!second_search && !output_pglyco1_exists) ||
-      (second_search  && !output_pglyco2_exists))) stop("Not all .mgf files found.
-                                                        Check MSconvert parameters")
-  
-  if(verbose) message("Found .mgf files\n",
-                      paste(list.files(pattern = "\\.mgf$"), collapse = "\n"))
-  
-  if(verbose) print(proc.time() - ptm)
-  writeLog(log_gb, new1 = paste0("run pParse"),
-           new2 = c(paste0("user: ", round((proc.time() - ptm)[1], 4)),
-                    paste0("system: ", round((proc.time() - ptm)[2], 4)),
-                    paste0("elapsed: ", round((proc.time() - ptm)[3], 4))))
+if(any(contain_ms3) && !output_mgf_exists && !output_pparsemod_exists &&
+  ((!second_search && !output_pglyco1_exists) ||
+  (second_search  && !output_pglyco2_exists))) {
+      
+    stop("Not all .mgf files found. Check MSconvert/rawtools parameters")
+    
+}
 
-})
 
 ##### merge MS2 and MS3 scans #####
 
