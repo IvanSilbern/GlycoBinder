@@ -410,6 +410,7 @@ mltSession <- function(files_to_process,
       # FUN(file_name = files_to_process[j],
       #     out_dir = out_process, ...)
       # 
+      #envir = parent.environment()
       do.call(FUN, args = list(file_name = files_to_process[j],
                                out_dir = out_process,
                                ...),
@@ -2019,12 +2020,12 @@ local({
                               '"', pglyco_config_file, '"')
       
       shell(cmd = paste0(cmd_pglycodb
-                         #' && ',
-                         #cmd_pglycofdr,
-                         #' && ',
-                         #cmd_pglycopro,
-                         #' && echo "done" >> ',
-                         #'"', out_dir, '/done.txt', '"'
+                         ' && ',
+                         cmd_pglycofdr,
+                         ' && ',
+                         cmd_pglycopro,
+                         ' && echo "done" >> ',
+                         '"', out_dir, '/done.txt', '"'
                          ),
             wait = FALSE, ignore.stdout = TRUE)
       
