@@ -940,6 +940,8 @@ if(file.exists("_Groups.tsv")){
   
   df_groups <- fread("_Groups.tsv")
   raw_file_names <- df_groups$File
+  if(sum(duplicated(raw_file_names))) stop("duplicated .raw file names")
+  if(!all(file.exists(raw_file_names))) stop("not all .raw files can be found")
   groups <- df_groups$Parameter_group
 
   } else {
