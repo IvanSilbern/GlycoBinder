@@ -410,7 +410,7 @@ mltSession <- function(files_to_process,
       # FUN(file_name = files_to_process[j],
       #     out_dir = out_process, ...)
       # 
-      #envir = parent.environment()
+      envir = parent.frame()
       do.call(FUN, args = list(file_name = files_to_process[j],
                                out_dir = out_process,
                                ...),
@@ -1361,50 +1361,6 @@ if(any(contain_ms3) && # there are files with ms3 spectra
           
         }
         
-        # # file names to process
-        # files_to_process <- raw_file_names[contain_ms3]
-        # 
-        # # number of files to process
-        # nr_files <- length(files_to_process)
-        # 
-        # # maximum iterations given the number of available threads
-        # # and number of files to process
-        # max_iterations <- ceiling(nr_files/nr_threads)
-        # 
-        # processes <- 0
-        # for(i in 1:max_iterations){
-        #   
-        #   processes <- (max(processes) + 1) : min(i*nr_threads, nr_files)
-        #   
-        #   if(verbose) message("msConvert processes\n",
-        #                       paste(files_to_process[processes],
-        #                             collapse = "\n"))
-        #   
-        #   for(j in processes){
-        #     
-        #     out_dir <- paste0(wd, "/msconvert_output/msconvert_process", j)
-        #     dir.create(out_dir, showWarnings = verbose)
-        #     
-        #     run_msconvert(file_name = files_to_process[j], out_dir = out_dir)
-        #     
-        #   }
-        #   
-        #   while(any(!file.exists(paste0(wd,"/msconvert_output/msconvert_process",
-        #                                 processes, "/msconvert_done.txt")))){
-        #     
-        #     #if(verbose) {
-        #     
-        #     cat(".")
-        #     
-        #     #} 
-        #     
-        #     Sys.sleep(2)
-        #     
-        #   }
-        #   cat("\n")
-        #   
-        # }
-        
         mltSession(files_to_process = raw_file_names[contain_ms3],
                    nr_threads = nr_threads,
                    tool_name = "msconvert",
@@ -1497,55 +1453,9 @@ if(!output_pparse_exists && !output_pparsemod_exists){
                tool_name = "pparse",
                FUN = "run_pparse",
                pparse_path = pparse_path,
-               envir = environment(run_pparse),
+               #envir = environment(run_pparse),
                verbose = verbose)
-    
-    # # number of files to process
-    # nr_files <- length(raw_file_names)
-    # 
-    # # file names to process
-    # files_to_process <- raw_file_names
-    # 
-    # # maximum iterations given the number of available threads
-    # # and the number of files to process
-    # max_iterations <- ceiling(nr_files/nr_threads)
-    # 
-    # processes <- 0
-    # for(i in 1:max_iterations){
-    #   
-    #   processes <- (max(processes) + 1) : min(i*nr_threads, nr_files)
-    #   
-    #   if(verbose) message("pParse processes\n",
-    #                       paste(files_to_process[processes], collapse = "\n"))
-    #   
-    #   for(j in processes){
-    #     
-    #     out_dir <- paste0(wd, "/pparse_output/pparse_process", j)
-    #     
-    #     if(!dir.exists(out_dir)) dir.create(out_dir, showWarnings = verbose)
-    #     
-    #     run_pparse(file_name = files_to_process[j],
-    #                out_dir = out_dir, pparse_path = pparse_path)
-    #     
-    #   }
-    #   
-    #   while(any(!file.exists(paste0(wd,"/pparse_output/pparse_process", processes, "/pparse_done.txt")))){
-    #     
-    #     #if(verbose) {
-    #     
-    #     cat(".")
-    #     
-    #     #} 
-    #     
-    #     Sys.sleep(2)
-    #     
-    #   }
-    #   cat("\n")
-    #   
-    # }
-    
-    
-    
+
   })
   
   if(!report_intermediate_files){
@@ -2019,7 +1929,7 @@ local({
       cmd_pglycopro <- paste0('pGlycoProInfer.exe ',
                               '"', pglyco_config_file, '"')
       
-      shell(cmd = paste0(cmd_pglycodb
+      shell(cmd = paste0(cmd_pglycodb,
                          ' && ',
                          cmd_pglycofdr,
                          ' && ',
@@ -2156,7 +2066,7 @@ local({
     writeLines(pglyco_config, "pGlyco_task.pglyco")
     
     # number of files to process
-    nr_files <- length(raw_file_names)
+    # nr_files <- length(raw_file_names)
 
     # file names to process
     files_to_process <- paste0("pparse_output/",
@@ -2164,47 +2074,15 @@ local({
                                     "_pParse_mod.mgf",
                                     raw_file_names))
 
-    # maximum iterations given the number of
-    # available threads and number of files to process
-    max_iterations <- ceiling(nr_files/nr_threads)
-
-    processes <- 0
-    for(i in 1:max_iterations){
-
-      processes <- (max(processes) + 1) : min(i*nr_threads, nr_files)
-
-      if(verbose) message("pGlyco processes\n",
-                          paste(files_to_process[processes], collapse = "\n"))
-
-      for(j in processes){
-
-        out_dir <- paste0(wd, "/pglyco_output/pglyco_process", j)
-        if(!dir.exists(out_dir)) dir.create(out_dir, showWarnings = verbose)
-
-        run_pglyco(file_name = files_to_process[j],
-                   out_dir = out_dir,
-                   wd = wd,
-                   pglyco_config = pglyco_config,
-                   pglyco_path = pglyco_path)
-
-      }
-
-      done_file <- paste0(wd,"/pglyco_output/pglyco_process",
-                          processes, "/done.txt")
-      while(any(!file.exists(done_file))){
-
-        #if(verbose) {
-
-        cat(".")
-
-        #}
-
-        Sys.sleep(2)
-
-      }
-      cat("\n")
-
-    }
+    mltSession(files_to_process =  files_to_process,
+               nr_threads = nr_threads,
+               tool_name = "pglyco",
+               FUN = "run_pglyco",
+               wd = wd,
+               pglyco_config = pglyco_config,
+               pglyco_path = pglyco_path,
+               #envir = environment(run_pglyco),
+               verbose = verbose)
     
     df_pglyco <- data.table()
     for(i in seq_along(raw_file_names)){
