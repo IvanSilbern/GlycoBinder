@@ -135,10 +135,8 @@ checkOutput <- function(raw_file_names,
   rt_mgf_output <- c(rt_mgf_output,
                      paste0(raw_file_names[contain_ms3], "_MS3.mgf"))
   rt_mgf_output <- paste0("rawtools_mgf/", rt_mgf_output)
-  rawtools_mgf_exists <<- all(file.exists(rt_mgf_output))
-  
   output_mgf_exists <- output_msconvert_exists
-  output_mgf_exists <<- output_mgf_exists | rawtools_mgf_exists
+  output_mgf_exists <<- output_mgf_exists | all(file.exists(rt_mgf_output))
   
   pparse_mod <- gsub("\\.raw$", "_pParse_mod.mgf", raw_file_names)
   pparse_mod <- paste0("pparse_output/", pparse_mod)
@@ -376,6 +374,64 @@ ion_match <- function(marker_ions,
   dt[, Scan := mgf$scan_number]
   return(dt)
   
+}
+
+# multiple session runs
+mltSession <- function(files_to_process,
+                       nr_threads,
+                       tool_name,
+                       FUN,
+                       verbose,
+                       envir,
+                       ...){
+  
+  # number of files to process
+  nr_files <- length(raw_file_names)
+  
+  # maximum iterations given the number of
+  # available threads and number of files to process
+  max_iterations <- ceiling(nr_files/nr_threads)
+  
+  processes <- 0
+  for(i in 1:max_iterations){
+    
+    processes <- (max(processes) + 1) : min(i*nr_threads, nr_files)
+    
+    if(verbose) message(tool_name, " processes\n",
+                        paste(files_to_process[processes], collapse = "\n"))
+    
+    for(j in processes){
+      
+      out_dir <- paste0(getwd(), "/", tool_name, "_output/")
+      out_process <- paste0(out_dir, tool_name, "_process", j)
+      if(!dir.exists(out_process)) dir.create(out_process, showWarnings = verbose)
+      
+      # FUN <- get(FUN, inherits = TRUE, pos = 1)
+      # FUN(file_name = files_to_process[j],
+      #     out_dir = out_process, ...)
+      # 
+      do.call(FUN, args = list(file_name = files_to_process[j],
+                               out_dir = out_process,
+                               ...),
+              envir = envir)
+      
+    }
+    
+    done_file <- paste0(out_dir, tool_name, "_process", processes, "/done.txt")
+    while(!all(file.exists(done_file))){
+      
+      #if(verbose) {
+      
+      cat(".")
+      
+      #} 
+      
+      Sys.sleep(2)
+      
+    }
+    cat("\n")
+    
+  }
 }
 
 # add core fucosylation information
@@ -677,6 +733,23 @@ pglyco_sep <- "/"       # separator in pGlyco
 # mgf converter
 rawtools_mgf <- FALSE
 
+# default parameters
+df_par_default <- data.table(Parameter_group = 1,
+                             reporter_ion = "not_labeled",
+                             enzyme = "Trypsin_KR-C",
+                             max_miss_cleave = 2,
+                             fixed_mod = "Carbamidomethyl[C]",
+                             var_mod   = "Oxidation[M]",
+                             max_var_modify_num = 3,
+                             max_peptide_len = 40,
+                             min_peptide_len = 6,
+                             max_peptide_weight = 4000,
+                             min_peptide_weight = 600,
+                             search_precursor_tolerance = 10,
+                             search_precursor_tolerance_type = "ppm",
+                             search_fragment_tolerance = 20,
+                             search_fragement_tolerance_type = "ppm")
+
 # default config file for pGlyco
 pglyco_config_default <- c("[version]",
                            "pGlyco_version=pGlyco_Tag20190101",
@@ -813,6 +886,18 @@ wd <- collectArgs("--wd", args, default = getwd(),
                   check_fun = function(x) all(length(x) == 1 & dir.exists(x)))
 setwd(wd)
 
+# writing tables only
+
+if(any(grepl("--write_tables", args))){
+  
+    write_tables <- TRUE
+  
+  }  else {
+    
+    write_tables <- FALSE
+    
+}  
+
 ##### find raw files in the working directory #####
 raw_file_names <- list.files(pattern = paste0("\\.", raw_file_extension, "$"))
 
@@ -823,7 +908,80 @@ if(any(grepl("\\.", gsub(".raw", "", raw_file_names)))){
   
   stop("Dots . are not allowed in raw file names (except .raw file extension)")
   
+}
+
+# write templates
+if(write_tables){
+  
+  message("\n ***** Write templates ***** \n")
+  
+  df_groups <- data.table(File = raw_file_names,
+                          Parameter_group = 1)
+  
+  fwrite(df_groups, "_Groups.tsv", sep = "\t")
+  fwrite(df_par_default, "_Parameters.tsv", sep = "\t")
+  
+  writeLog(log_gb, new1 = paste0("Write templates "), new2 = "")
+  
+  message("\n ***** DONE! *****\n")
+  
+  if(verbose) proc.time() - ptm
+  writeLog(log_gb, new1 = paste0("Total processing time: "),
+           new2 = c(paste0("user: ", round((proc.time() - ptm)[1], 4)),
+                    paste0("system: ", round((proc.time() - ptm)[2], 4)),
+                    paste0("elapsed: ", round((proc.time() - ptm)[3], 4))))
+  quit()
+  
 } 
+
+# check if group and parameter table exists
+if(file.exists("_Groups.tsv")){
+  
+  df_groups <- fread("_Groups.tsv")
+  raw_file_names <- df_groups$File
+  groups <- df_groups$Parameter_group
+
+  } else {
+    
+    message("Define single parameter group")
+    writeLog(log_gb,
+             new1 = paste0("Single parameter group"),
+             new2 = "_Groups.tsv not found")
+    df_groups <- data.table(File = raw_file_names,
+                            Parameter_group = 1)
+    groups <- 1
+    
+  }
+
+if(file.exists("_Parameters.tsv")){
+  
+  df_par <- fread("_Parameters.tsv")
+  
+  }  else {
+    
+    message("Use global parameters")
+    df_par <- copy(df_par_default)
+    writeLog(log_gb,
+             new1 = paste0("Use global parameters"),
+             new2 = "_Parameters.tsv not found")
+    
+  }
+
+# check parameter group names
+checkNames <- function(dt, col, pattern, repl){
+  
+  dt[, paste0(col) := as.character(get(col))]
+  while(any(grepl(pattern, dt[[col]]))){
+    
+    dt[, paste0(col) := gsub(pattern, repl, get(col))]
+    
+  }
+  
+  return(dt)
+  
+}
+df_par <- checkNames(df_par, "Parameter_group", "[^A-Za-z0-9_.]", ".")  
+df_groups <- checkNames(df_groups, "Parameter_group", "[^A-Za-z0-9_.]", ".")
 
 ##### collect further arguments #####
 
@@ -850,18 +1008,35 @@ ion_match_tolerance <- collectArgs("--match_tol", args, default = 1,
                                      })
 
 # reporter ion type parameter for RawTools
-reporter_ion <- collectArgs("--reporter_ion", args, default = NA,
-                            check_fun = function(x){
-                              
-                              all(length(x) == 1 &
-                                    x %in% supported_reporter_ions)
-                              
+if(any(grepl("--reporter_ion", args))){
+  
+  message("use global reporter_ion paramenter")
+  reporter_ion <- collectArgs("--reporter_ion", args, default = NA,
+                              check_fun = function(x){
+                                
+                                all(length(x) == 1 &
+                                      x %in% supported_reporter_ions)
+                                
                               })
-if(is.na(reporter_ion)) stop("Reporter ion type is not provided or not correct.")
+  
+  df_par[, reporter_ion := ..reporter_ion]
+  
+} else {
+  
+  if(!all(df_par$reporter_ion %in% supported_reporter_ions)){
+    
+    stop("not supported reporer_ion parameter")
+    
+    }
+  
+  }
+
+#if(is.na(reporter_ion)) stop("Reporter ion type is not provided or not correct.")
 
 
 # pglyco fdr threshold
-pglyco_fdr_threshold <- collectArgs("--pglyco_fdr_threshold", args, default = 0.02,
+pglyco_fdr_threshold <- collectArgs("--pglyco_fdr_threshold",
+                                    args, default = 0.02,
                                     transform_fun = function(x) as.numeric(x),
                                     check_fun = function(x){
                                       
@@ -897,9 +1072,15 @@ parent_area_fun <-  collectArgs("--parent_area_fun", args, default = "sum",
                                   } )
 
 # number of available threads
-nr_of_processors <- shell("set NUMBER_OF_PROCESSORS", intern = TRUE)
-nr_of_processors <- gsub("NUMBER_OF_PROCESSORS=", "", nr_of_processors)
-nr_of_processors <- as.integer(nr_of_processors)
+getNrProcessors <- function(){
+  
+  nr_of_processors <- shell("set NUMBER_OF_PROCESSORS", intern = TRUE)
+  nr_of_processors <- gsub("NUMBER_OF_PROCESSORS=", "", nr_of_processors)
+  nr_of_processors <- as.integer(nr_of_processors)
+  return(nr_of_processors)
+  
+  }
+nr_of_processors <- getNrProcessors()
 
 nr_threads <- collectArgs("--nr_threads", args,
                           default = min(max(nr_of_processors / 2, 1),
@@ -1038,24 +1219,30 @@ if(!all(file.exists(paste0("rawtools_output\\",
     
     # output folder
     if(!dir.exists("rawtools_output")) dir.create("rawtools_output")
-      
-    # prepare a string of arguments
-    RawTools_args    <- c('-parse',
-                          '-d', paste0('"', wd, '"'),
-                          '-out', paste0('"', wd, '/rawtools_output', '"'),
-                          '-R', '-u',
-                          '-k ', nr_threads)
     
-    if(reporter_ion != "not_labeled"){
+    for(i in seq_along(groups)){
       
-      RawTools_args <- c( RawTools_args, '-q', '-r', reporter_ion)
+      label <- df_par[Parameter_group == groups[i]]$reporter_ion
+      files_to_process <- df_groups[Parameter_group == groups[i]]$File
+      
+      # prepare a string of arguments
+      RawTools_args    <- c('-parse',
+                            '-f', paste(files_to_process, collapse = " "),
+                            '-out', paste0('"', wd, '/rawtools_output', '"'),
+                            '-R', '-u',
+                            '-k ', nr_threads)
+      
+      if(label != "not_labeled"){
+        
+        RawTools_args <- c(RawTools_args, '-q', '-r', label)
+        
+      }
+      if(verbose) message("Arguments: ", paste(RawTools_args, collapse = " "))
+      
+      # run
+      system2(command = "RawTools", args = RawTools_args, wait = TRUE)
       
     }
-    if(verbose) message("Arguments: ", paste(RawTools_args, collapse = " "))
-    
-    
-    # run
-    system2(command = "RawTools", args = RawTools_args, wait = TRUE)
     
     if(verbose) print(proc.time() - ptm)
     writeLog(log_gb, new1 = paste0("Run RawTools"),
@@ -1167,55 +1354,62 @@ if(any(contain_ms3) && # there are files with ms3 spectra
                                   collapse = " ")
           
           shell(cmd = paste("msconvert", msConvert_args, '& echo "done" >>',
-                            paste0('"', out_dir, '/msconvert_done.txt', '"'),
+                            paste0('"', out_dir, '/done.txt', '"'),
                             collapse = " "), wait = FALSE, ignore.stdout = TRUE)
           
           
         }
         
-        # file names to process
-        files_to_process <- raw_file_names[contain_ms3]
+        # # file names to process
+        # files_to_process <- raw_file_names[contain_ms3]
+        # 
+        # # number of files to process
+        # nr_files <- length(files_to_process)
+        # 
+        # # maximum iterations given the number of available threads
+        # # and number of files to process
+        # max_iterations <- ceiling(nr_files/nr_threads)
+        # 
+        # processes <- 0
+        # for(i in 1:max_iterations){
+        #   
+        #   processes <- (max(processes) + 1) : min(i*nr_threads, nr_files)
+        #   
+        #   if(verbose) message("msConvert processes\n",
+        #                       paste(files_to_process[processes],
+        #                             collapse = "\n"))
+        #   
+        #   for(j in processes){
+        #     
+        #     out_dir <- paste0(wd, "/msconvert_output/msconvert_process", j)
+        #     dir.create(out_dir, showWarnings = verbose)
+        #     
+        #     run_msconvert(file_name = files_to_process[j], out_dir = out_dir)
+        #     
+        #   }
+        #   
+        #   while(any(!file.exists(paste0(wd,"/msconvert_output/msconvert_process",
+        #                                 processes, "/msconvert_done.txt")))){
+        #     
+        #     #if(verbose) {
+        #     
+        #     cat(".")
+        #     
+        #     #} 
+        #     
+        #     Sys.sleep(2)
+        #     
+        #   }
+        #   cat("\n")
+        #   
+        # }
         
-        # number of files to process
-        nr_files <- length(files_to_process)
-        
-        # maximum iterations given the number of available threads
-        # and number of files to process
-        max_iterations <- ceiling(nr_files/nr_threads)
-        
-        processes <- 0
-        for(i in 1:max_iterations){
-          
-          processes <- (max(processes) + 1) : min(i*nr_threads, nr_files)
-          
-          if(verbose) message("msConvert processes\n",
-                              paste(files_to_process[processes],
-                                    collapse = "\n"))
-          
-          for(j in processes){
-            
-            out_dir <- paste0(wd, "/msconvert_output/msconvert_process", j)
-            dir.create(out_dir, showWarnings = verbose)
-            
-            run_msconvert(file_name = files_to_process[j], out_dir = out_dir)
-            
-          }
-          
-          while(any(!file.exists(paste0(wd,"/msconvert_output/msconvert_process",
-                                        processes, "/msconvert_done.txt")))){
-            
-            #if(verbose) {
-            
-            cat(".")
-            
-            #} 
-            
-            Sys.sleep(2)
-            
-          }
-          cat("\n")
-          
-        }
+        mltSession(files_to_process = raw_file_names[contain_ms3],
+                   nr_threads = nr_threads,
+                   tool_name = "msconvert",
+                   FUN = "run_msconvert",
+                   verbose = verbose,
+                   envir = environment(run_msconvert))
         
         # remove created folders
         list_dirs <- list.dirs(path = "msconvert_output", recursive = FALSE)
@@ -1278,7 +1472,7 @@ if(!output_pparse_exists && !output_pparsemod_exists){
                            '-p', '0')
       
       shell(cmd = paste0(cmd_pparse, ' & echo "done" >> ',
-                         '"', out_dir, '/pparse_done.txt', '"'),
+                         '"', out_dir, '/done.txt', '"'),
             wait = FALSE, ignore.stdout = TRUE)
       
       # switch back to the original directory
@@ -1297,49 +1491,59 @@ if(!output_pparse_exists && !output_pparsemod_exists){
                                       Please check if the path is set
                                       in the environmental variables.")
     
-    # number of files to process
-    nr_files <- length(raw_file_names)
+    mltSession(files_to_process = raw_file_names,
+               nr_threads = nr_threads,
+               tool_name = "pparse",
+               FUN = "run_pparse",
+               pparse_path = pparse_path,
+               envir = environment(run_pparse),
+               verbose = verbose)
     
-    # file names to process
-    files_to_process <- raw_file_names
+    # # number of files to process
+    # nr_files <- length(raw_file_names)
+    # 
+    # # file names to process
+    # files_to_process <- raw_file_names
+    # 
+    # # maximum iterations given the number of available threads
+    # # and the number of files to process
+    # max_iterations <- ceiling(nr_files/nr_threads)
+    # 
+    # processes <- 0
+    # for(i in 1:max_iterations){
+    #   
+    #   processes <- (max(processes) + 1) : min(i*nr_threads, nr_files)
+    #   
+    #   if(verbose) message("pParse processes\n",
+    #                       paste(files_to_process[processes], collapse = "\n"))
+    #   
+    #   for(j in processes){
+    #     
+    #     out_dir <- paste0(wd, "/pparse_output/pparse_process", j)
+    #     
+    #     if(!dir.exists(out_dir)) dir.create(out_dir, showWarnings = verbose)
+    #     
+    #     run_pparse(file_name = files_to_process[j],
+    #                out_dir = out_dir, pparse_path = pparse_path)
+    #     
+    #   }
+    #   
+    #   while(any(!file.exists(paste0(wd,"/pparse_output/pparse_process", processes, "/pparse_done.txt")))){
+    #     
+    #     #if(verbose) {
+    #     
+    #     cat(".")
+    #     
+    #     #} 
+    #     
+    #     Sys.sleep(2)
+    #     
+    #   }
+    #   cat("\n")
+    #   
+    # }
     
-    # maximum iterations given the number of available threads
-    # and the number of files to process
-    max_iterations <- ceiling(nr_files/nr_threads)
     
-    processes <- 0
-    for(i in 1:max_iterations){
-      
-      processes <- (max(processes) + 1) : min(i*nr_threads, nr_files)
-      
-      if(verbose) message("pParse processes\n",
-                          paste(files_to_process[processes], collapse = "\n"))
-      
-      for(j in processes){
-        
-        out_dir <- paste0(wd, "/pparse_output/pparse_process", j)
-        
-        if(!dir.exists(out_dir)) dir.create(out_dir, showWarnings = verbose)
-        
-        run_pparse(file_name = files_to_process[j],
-                   out_dir = out_dir, pparse_path = pparse_path)
-        
-      }
-      
-      while(any(!file.exists(paste0(wd,"/pparse_output/pparse_process", processes, "/pparse_done.txt")))){
-        
-        #if(verbose) {
-        
-        cat(".")
-        
-        #} 
-        
-        Sys.sleep(2)
-        
-      }
-      cat("\n")
-      
-    }
     
   })
   
@@ -1624,7 +1828,7 @@ if(any(contain_ms3) && !all(file.exists(pparse_mod_files))){
       # read matrix file
       mtx <- fread(paste0("rawtools_output/", file_name, "_Matrix.txt"))
       
-      if(rawtools_mgf_exists){
+      if(rawtools_mgf){
         
         ms2_mgf <- paste0("rawtools_mgf/", file_name, "_Ms2.mgf")
         ms3_mgf <- paste0("rawtools_mgf/", file_name, "_Ms3.mgf")
@@ -1742,6 +1946,8 @@ cat("\n")
 local({
   
   processPGlyco <- function(raw_file_names,
+                            df_groups,
+                            df_par,
                             fasta.name,
                             nr_threads,
                             wd,
@@ -1788,6 +1994,7 @@ local({
       spectrum_total_line <- which(grepl("^spectrum_total=", pglyco_config))
       pglyco_config <- pglyco_config[1:spectrum_total_line] 
       process_file  <- paste0(wd, "/", file_name)
+      process_file <- normalizePath(process_file, winslash = "\\")
       if(!file.exists(process_file)) { # check if the file exists 
         
         writeLines("Not Finished", paste0(out_dir, "done.txt"))
@@ -1797,23 +2004,28 @@ local({
       pglyco_config <- c(pglyco_config, paste0("file1", "=", process_file))
       
       # path to pglyco config file
-      pglyco_config_file <- paste0(out_dir, "/pGlyco_task.pglyco")
+      pglyco_config_file <- paste0(out_dir, "\\pGlyco_task.pglyco")
       
       # write pGlyco config file
       writeLines(pglyco_config, pglyco_config_file)
+      pglyco_config_file <- normalizePath(pglyco_config_file, winslash = "\\")
       
       # prepare system calls
       cmd_pglycodb  <- paste0('pGlycodb.exe ', '"', pglyco_config_file, '"')
-      cmd_pglycofdr <- paste0('pGlycoFDR.exe', " -p ", '"',
-                              pglyco_config_file, '"', " -r ", '"',
-                              paste0(out_dir, "/pGlycoDB-GP.txt"), '"')
+      cmd_pglycofdr <- paste0('pGlycoFDR.exe', " -p ",
+                              '"', pglyco_config_file, '"', " -r ",
+                              '"', paste0(out_dir, "/pGlycoDB-GP.txt"), '"')
       cmd_pglycopro <- paste0('pGlycoProInfer.exe ',
                               '"', pglyco_config_file, '"')
       
-      shell(cmd = paste0(cmd_pglycodb, ' && ',
-                         cmd_pglycofdr, ' && ',
-                         cmd_pglycopro, ' & echo "done" >> ',
-                         '"', out_dir, '/done.txt', '"'),
+      shell(cmd = paste0(cmd_pglycodb
+                         #' && ',
+                         #cmd_pglycofdr,
+                         #' && ',
+                         #cmd_pglycopro,
+                         #' && echo "done" >> ',
+                         #'"', out_dir, '/done.txt', '"'
+                         ),
             wait = FALSE, ignore.stdout = TRUE)
       
       # switch back to the original directory
@@ -1854,7 +2066,9 @@ local({
       pglyco_config[grepl("^pGlyco_version", pglyco_config)] <- pglyco_version
       
       # fasta file
-      fasta.name <- paste0("fasta=", wd,  "/", fasta.name, ".N2J")
+      fasta.name <- paste0(wd,  "/", fasta.name, ".N2J")
+      fasta.name <- normalizePath(fasta.name, winslash = "\\")
+      fasta.name <- paste0("fasta=", fasta.name)
       pglyco_config[grepl("^fasta=", pglyco_config)] <- fasta.name
       
       #number of threads
@@ -1942,53 +2156,53 @@ local({
     
     # number of files to process
     nr_files <- length(raw_file_names)
-    
+
     # file names to process
     files_to_process <- paste0("pparse_output/",
                                gsub("\\.raw$",
                                     "_pParse_mod.mgf",
                                     raw_file_names))
-    
+
     # maximum iterations given the number of
     # available threads and number of files to process
     max_iterations <- ceiling(nr_files/nr_threads)
-    
+
     processes <- 0
     for(i in 1:max_iterations){
-      
+
       processes <- (max(processes) + 1) : min(i*nr_threads, nr_files)
-      
+
       if(verbose) message("pGlyco processes\n",
                           paste(files_to_process[processes], collapse = "\n"))
-      
+
       for(j in processes){
-        
+
         out_dir <- paste0(wd, "/pglyco_output/pglyco_process", j)
         if(!dir.exists(out_dir)) dir.create(out_dir, showWarnings = verbose)
-        
+
         run_pglyco(file_name = files_to_process[j],
                    out_dir = out_dir,
                    wd = wd,
                    pglyco_config = pglyco_config,
                    pglyco_path = pglyco_path)
-        
+
       }
-      
+
       done_file <- paste0(wd,"/pglyco_output/pglyco_process",
                           processes, "/done.txt")
       while(any(!file.exists(done_file))){
-        
+
         #if(verbose) {
-        
+
         cat(".")
-        
-        #} 
-        
+
+        #}
+
         Sys.sleep(2)
-        
+
       }
       cat("\n")
-      
+
     }
     
     df_pglyco <- data.table()
@@ -2178,7 +2392,7 @@ local({
       #remove an empty column if it is appended
       if(sum(is.na(temp[, c(ncol(..temp))])) == nrow(temp)) temp <- temp[, -ncol(temp), with = FALSE]
       temp[, RawName := matrix_names[i]]
-      rawtools_data <- rbind(rawtools_data, temp)
+      rawtools_data <- rbind(rawtools_data, temp, fill = TRUE)
       
     }
     search_data <- merge(search_data, rawtools_data,
