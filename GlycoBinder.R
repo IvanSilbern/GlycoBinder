@@ -135,8 +135,10 @@ checkOutput <- function(raw_file_names,
   rt_mgf_output <- c(rt_mgf_output,
                      paste0(raw_file_names[contain_ms3], "_MS3.mgf"))
   rt_mgf_output <- paste0("rawtools_mgf/", rt_mgf_output)
+  rawtools_mgf_exists <<- all(file.exists(rt_mgf_output))
+  
   output_mgf_exists <- output_msconvert_exists
-  output_mgf_exists <<- output_mgf_exists | all(file.exists(rt_mgf_output))
+  output_mgf_exists <<- output_mgf_exists | rawtools_mgf_exists
   
   pparse_mod <- gsub("\\.raw$", "_pParse_mod.mgf", raw_file_names)
   pparse_mod <- paste0("pparse_output/", pparse_mod)
@@ -1622,7 +1624,7 @@ if(any(contain_ms3) && !all(file.exists(pparse_mod_files))){
       # read matrix file
       mtx <- fread(paste0("rawtools_output/", file_name, "_Matrix.txt"))
       
-      if(rawtools_mgf){
+      if(rawtools_mgf_exists){
         
         ms2_mgf <- paste0("rawtools_mgf/", file_name, "_Ms2.mgf")
         ms3_mgf <- paste0("rawtools_mgf/", file_name, "_Ms3.mgf")
