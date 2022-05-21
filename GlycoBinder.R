@@ -484,21 +484,46 @@ check_core_fucose <- function(df, scans){
 # aggregate parent peak areas
 addPeakArea <- function(df, scans, FUN = "sum"){
   
-  ids <- lapply(str_split(df$pGlyco_ids, pattern = "[;/]"), as.integer)
-  area <- unlist(lapply(ids, function(x){
+  df_ids <- df$id 
+  scans_ids <- lapply(str_split(df$pGlyco_ids, pattern = "[;/]"), as.integer)
+  #pgs <- lapply(ids, function(x) scans[id %in% x]$Parameter_group)
+  
+  area <- rbindlist(lapply(seq_along(scans_ids), function(i){
     
-    ppa <- scans[scans$id %in% x, c("RawName", "Peptide", "Glycan(H.N.A.G.F)",
-                                    "PrecursorMZ", "PrecursorCharge",
-                                    "ParentPeakArea")]
+    if(all(is.na(scans_ids[[i]]))) return(data.table(df_id = df_ids[i]))
+    
+    ppa <- scans[id %in% scans_ids[[i]],
+                 c("RawName", "Peptide", "Glycan(H.N.A.G.F)",
+                   "PrecursorMZ", "PrecursorCharge",
+                   "ParentPeakArea", "Parameter_group")]
     ppa[, PrecursorMZ := signif(PrecursorMZ, 5)]
     ppa <- ppa[order(-ParentPeakArea)]
-    ppa <- ppa[!duplicated(ppa[, -c("ParentPeakArea")])]$ParentPeakArea
-    ParentPeakArea  <- eval(call(get("FUN"), ppa, na.rm = TRUE))
-    return(ParentPeakArea)
+    ppa <- ppa[, .(ParentPeakArea = eval(
+      
+      call(get("FUN"), ParentPeakArea, na.rm = TRUE)
+      
+      )), by = Parameter_group]
     
-  }))
+    ppa[, df_id := df_ids[i]]
+    #ppa <- ppa[!duplicated(ppa[, -c("ParentPeakArea")])]$ParentPeakArea
+    ppa <- dcast(ppa, df_id ~ Parameter_group, value.var = "ParentPeakArea",
+                 sep = ".Group_", drop = FALSE) 
+    
+    f <- function(x) x != "df_id"
+    ppa_names <- paste0("ParentPeakArea.Group_", Filter(f, names(ppa)))
+    names(ppa)[names(ppa) %in% Filter(f, names(ppa))] <- ppa_names
+    
+    return(ppa)
+    
+  }), fill = TRUE)
   
-  df[, ParentPeakArea := area]
+  if(!any(grepl("ParentPeakArea", names(area)))){
+    
+    area[, paste0("ParentPeakArea.Group_", groups) := 0]
+    
+    }
+  
+  df <- merge(df, area, by.x = "id", by.y = "df_id", all.x = TRUE)
   return(df)
   
 }
@@ -506,14 +531,36 @@ addPeakArea <- function(df, scans, FUN = "sum"){
 # convert reporter ion intensities into %
 percentIntensity <- function(df, int_names){
   
-  df[, TotalRepIonIntensity := sum(unlist(.SD), na.rm = TRUE),
-     .SD = int_names, by = "id"]
-  df[, paste0(int_names, "Percent") := .SD/TotalRepIonIntensity,
-     .SD = int_names, by = "id"]
-  df[, paste0(int_names, "Percent") := 100*.SD/TotalRepIonIntensity,
-     .SD = int_names, by = "id"]
-  df[, paste0(int_names, "_ParentPeakArea") := .SD*ParentPeakArea*0.01,
-     .SD = paste0(int_names, "Percent"), by = "id"]
+  dfl <- melt(df[, .SD, .SDcols = c("id", int_names)],
+              measure.vars = int_names,
+              value.name = "Int")
+  dfl[, Parameter_group := str_match(variable, "(\\.Group_.+)$")[, 2]]
+  dfl[is.na(Parameter_group), Parameter_group := ""]
+  dfl[, Intensity_type  := str_match(variable, "^(.+)\\.Group_.+$")[, 2]]
+  dfl[!grepl("\\.Group_.+$", variable), Intensity_type  := variable]
+  
+  ppa_names <- grep("ParentPeakArea", names(df), value = TRUE)
+  dfl_ppa <- melt(df[, .SD, .SDcols = c("id", ppa_names)],
+                  measure.vars = ppa_names,
+                  value.name = "ParentPeakArea")
+  dfl_ppa[, Parameter_group := str_match(variable, "(\\.Group_.+)$")[, 2]]
+  dfl_ppa[is.na(Parameter_group), Parameter_group := ""]
+  
+  dfl <- merge(dfl, dfl_ppa[, -c("variable")], by = c("id", "Parameter_group"))
+  
+  dfl[, TotalRepIonIntensity := sum(Int, na.rm = TRUE),
+      by = c("Parameter_group", "id")]
+  dfl[, Percent := 100*Int/TotalRepIonIntensity]
+  dfl[, ParentPeakArea := Percent*ParentPeakArea*0.01]
+  
+  dfl[, Parameter_group2 := paste0("TotalRepIonIntensity", Parameter_group)]
+  dfl1 <- dcast(dfl, id~Parameter_group2,
+                value.var = c("TotalRepIonIntensity"),
+                fun.aggregate = function(x) x[1])
+  dfl2 <- dcast(dfl, id~variable, value.var = c("Percent", "ParentPeakArea"))
+  dfl  <- merge(dfl1, dfl2, by = "id")
+  
+  df <- merge(df, dfl, by = "id", all.x = TRUE)
   return(df)
   
 }
@@ -942,7 +989,7 @@ if(file.exists("_Groups.tsv")){
   raw_file_names <- df_groups$File
   if(sum(duplicated(raw_file_names))) stop("duplicated .raw file names")
   if(!all(file.exists(raw_file_names))) stop("not all .raw files can be found")
-  groups <- df_groups$Parameter_group
+  groups <- unique(df_groups$Parameter_group)
 
   } else {
     
@@ -2286,6 +2333,8 @@ local({
   comb <- addRawtoolsData(search_files = pglyco_out,
                           rawtools_files = matrix_files)
   names(comb)[names(comb) == "Glycan(H,N,A,G,F)"] <- "Glycan(H.N.A.G.F)"
+  df_groups[, File_raw := gsub(".raw$", "", File)]
+  comb <- merge(comb, df_groups, by.x = "RawName", by.y = "File_raw", all.x = TRUE)
 
   fwrite(comb, "pglyco_output/pglyco_quant_results.txt",
          na = "NA", row.names = FALSE, quote = FALSE, sep = "\t")
@@ -2443,6 +2492,7 @@ local({
   
   # intensity names
   int_names <- grep("\\d\\d+[NC]?Intensity$", names(df_scans), value = TRUE)
+  #int_names <- c("ParentPeakArea", int_names)
   
   # marker ion names
   if(!skip_marker_ions){
@@ -2456,6 +2506,20 @@ local({
     mion_names <- character()
     
   }
+  
+  df_scans[, c(int_names, mion_names) := lapply(.SD, as.numeric),
+           .SDcols = c(int_names, mion_names)]
+  df_scans_wide <- dcast(df_scans, id~Parameter_group,
+                         value.var = c(int_names, mion_names),
+                         sep = ".Group_")
+  
+  int_names_groups <- paste0(rep(int_names, length(groups)), ".Group_", groups)
+  int_names <- c(int_names, int_names_groups)
+  
+  mion_names_groups <- paste0(rep(mion_names, length(groups)), ".Group_", groups)
+  mion_names <- c(mion_names, mion_names_groups)
+  
+  df_scans_wide <- merge(df_scans, df_scans_wide, by = "id")
   
   aggregateData  <- function(data, by, f, cols){
 
@@ -2473,7 +2537,7 @@ local({
                                 by = by,
                                 f = function(x) paste(x, collapse = pglyco_sep),
                                 cols = c("id", "RawName", "Scan", "PrecursorMZ",
-                                         "Charge", "Mod", "ParentPeakArea"))
+                                         "Charge", "Mod"))
     
     modpt_pept <- aggregateData(data = data,
                                 by = by,
@@ -2508,7 +2572,7 @@ local({
     return(df)
     
   }
-  df_modpept <- aggregateModPt(data = df_scans,
+  df_modpept <- aggregateModPt(data = df_scans_wide,
                                by = c("Peptide", "GlySite",
                                       "Glycan(H.N.A.G.F)"))
 
@@ -3031,7 +3095,7 @@ local({
     return(df)
     
     }
-  df_glycotope  <- aggregateGTop(data = df_scans,
+  df_glycotope  <- aggregateGTop(data = df_scans_wide,
                                  by = "Glycotope",
                                  base_glycotopes = base_glycotopes)
   
@@ -3070,7 +3134,7 @@ local({
   # convert reporter ion intensities into %
   if(reporter_ion != "not_labeled"){
     
-    use_tables <- c("scans", "modpept", "sites", "gforms", "glycans", "glycotopes")
+    use_tables <- c("modpept", "sites", "gforms", "glycans", "glycotopes")
     for(i in use_tables){
       
       if(nrow(dat[[i]]) == 0) next
