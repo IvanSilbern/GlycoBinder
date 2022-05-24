@@ -501,6 +501,7 @@ addPeakArea <- function(df, scans, FUN = "sum"){
                    "ParentPeakArea", "Parameter_group")]
     ppa[, PrecursorMZ := signif(PrecursorMZ, 5)]
     ppa <- ppa[order(-ParentPeakArea)]
+    ppa <- ppa[!duplicated(ppa[, -c("ParentPeakArea")])]
     ppa <- ppa[, .(ParentPeakArea = eval(
       
       call(get("FUN"), ParentPeakArea, na.rm = TRUE)
