@@ -155,8 +155,11 @@ checkOutput <- function(raw_file_names,
                                         list.files(path = "pglyco_output")))
   output_pglyco2_exists   <<- any(grepl("-Pro2.txt",
                                         list.files(path = "pglyco_output")))
+  invisible({
   
-  return("\n")
+    return("\n")
+    
+  })
   
 }
 
@@ -386,7 +389,7 @@ mltSession <- function(files_to_process,
                        ...){
   
   # number of files to process
-  nr_files <- length(raw_file_names)
+  nr_files <- length(files_to_process)
   
   # maximum iterations given the number of
   # available threads and number of files to process
@@ -986,11 +989,12 @@ if(write_tables){
 if(file.exists("_Groups.tsv")){
   
   df_groups <- fread("_Groups.tsv")
+  if(sum(duplicated(raw_file_names))) stop("duplicated .raw file names in _Groups.tsv")
+  
   raw_file_names <- df_groups$File
-  if(sum(duplicated(raw_file_names))) stop("duplicated .raw file names")
+  message(paste0("Process:\n", paste(raw_file_names, collapse = "\n")))
   if(!all(file.exists(raw_file_names))) stop("not all .raw files can be found")
-  groups <- unique(df_groups$Parameter_group)
-
+  
   } else {
     
     message("Define single parameter group")
@@ -1009,7 +1013,7 @@ if(file.exists("_Parameters.tsv")){
   
   }  else {
     
-    message("Use global parameters")
+    message("Prameter file not found. Use default parameters")
     df_par <- copy(df_par_default)
     writeLog(log_gb,
              new1 = paste0("Use global parameters"),
@@ -1032,6 +1036,35 @@ checkNames <- function(dt, col, pattern, repl){
 }
 df_par <- checkNames(df_par, "Parameter_group", "[^A-Za-z0-9_.]", ".")  
 df_groups <- checkNames(df_groups, "Parameter_group", "[^A-Za-z0-9_.]", ".")
+groups <- unique(df_groups$Parameter_group)
+
+# check for duplicated group names
+if(sum(duplicated(df_par$Parameter_group)) > 0){
+  
+  message("duplicated Parameter group in the _Parameters.tsv file")
+  dupl_par_groups <- df_par$Parameter_group[duplicated(df_par$Parameter_group)]
+  dupl_par_groups <- unique(dupl_par_groups)
+  writeLog(log_gb,
+           new1 = paste0("duplicated Parameter group in the _Parameters.tsv file"),
+           new2 = paste0(dupl_par_gropus, collapse = " "))
+  stop()
+  
+} 
+
+# check that reporter ion names are correct
+if(any(!df_par$reporter_ion %in% supported_reporter_ions)){
+  
+  f <- function(x) x[!x %in% supported_reporter_ions]
+  not_supported <- Filter(f, df_par$reporter_ion)
+  message("Not supported ion types", paste0(not_supported, collapse = " "))
+  message("Supported ion types: ", paste0(supported_reporter_ions, collapse = " "))
+  writeLog(log_gb,
+           new1 = paste0("not supported ion type"),
+           new2 = paste0(not_supported, collapse = " "))
+          
+  stop()        
+  
+}
 
 ##### collect further arguments #####
 
@@ -1058,6 +1091,7 @@ ion_match_tolerance <- collectArgs("--match_tol", args, default = 1,
                                      })
 
 # reporter ion type parameter for RawTools
+# use this global parameter for all parameter groups
 if(any(grepl("--reporter_ion", args))){
   
   message("use global reporter_ion paramenter")
@@ -1918,15 +1952,17 @@ local({
     if(!dir.exists("pglyco_output\\")) dir.create("pglyco_output\\")
     
     # auxiliary functions
-    run_pglyco   <- function(file_name, out_dir, wd,
-                             pglyco_config, pglyco_path){
+    run_pglyco   <- function(file_name, pglyco_config,
+                             df_groups, df_par,
+                             out_dir, wd, pglyco_path){
       
       # Function runs pGlyco through a system call
       # Arguments:
-      # file_name = name of the file
+      # file_name = name of the raw file
       # out_idr = output directory
       # wd = working directory (location of the raw files)
-      # pglyco_config = path to pglyco config file
+      # df_groups = data table assigning each raw file to parameter group
+      # df_par = data table specifying parameters for each parameter group
       # pglyco_path = path to pglyco executable
       # Value:
       # NULL
@@ -1936,6 +1972,130 @@ local({
       setwd(pglyco_path)
       
       ### change pglyco_config template
+      #raw_file_name <- str_match(file_name, "[/]([^/.]+)_pParse_mod.mgf")[, 2]
+      #raw_file_name <- paste0(raw_file_name, ".raw")
+      par_group <- df_groups[File == file_name]$Parameter_group
+      par <- df_par[Parameter_group == par_group]
+      
+      # update single-value parameters
+      updateSingleConfigs <- function(pglyco_config, par){
+        
+        for(i in seq_along(par)){
+          
+          par_name <- paste0(names(par)[i], "=")
+          par_value <- paste0(par_name, par[[i]][1])
+          
+          pglyco_config[grepl(par_name, pglyco_config)] <- par_value
+          
+          }
+        
+        return(pglyco_config)
+        
+      }
+      
+      pglyco_config <- updateSingleConfigs(pglyco_config = pglyco_config,
+                                           par = par)
+      
+      # check in the parameters of pglyco
+      # whether a parameter is configured in pGlyco 
+      checkParsPGlyco <- function(par_file, par){
+        
+        par_file <- fread(par_file, sep = NULL)[[1]]
+        pars <- unlist(str_match(par_file, "name\\d+=([^=]+)$")[, 2])
+        pars <- pars[!is.na(pars)]
+        
+        all(par %in% pars)
+        
+      }
+      
+      # enzyme
+      if(!checkParsPGlyco(par_file = "enzyme.ini", par = par$enzyme)){
+        
+        message("Enzyme ", par$enzyme, " is not defined in pGlyco settings")
+        writeLog(log_gb,
+                 new1 = paste0("Enzyme is not defined"),
+                 new2 = par$enzyme)
+        stop()
+        
+      }
+      
+      # set variable modifications
+      updateModifications <- function(pglyco_config, mod_name = "var", mods){
+        
+        mod_total <- paste0(mod_name, "_total=")
+        mod_total_value <- paste0(mod_total, length(mods))
+        pglyco_config[grepl(mod_total, pglyco_config)] <- mod_total_value
+        
+        if(length(mods > 0)){
+          
+          mod_par_name <- paste0("^", mod_name, "\\d=")
+          mods <- paste0(mod_name, seq_along(mods), "=", mods)
+          prev_line <- which(grepl(mod_total, pglyco_config))
+          next_line <- max(which(grepl(mod_par_name, pglyco_config))) + 1
+          pglyco_config <- c(pglyco_config[1:prev_line],
+                             mods,
+                             pglyco_config[next_line:length(pglyco_config)])
+          
+        }
+        
+        return(pglyco_config)
+        
+      }
+      
+      var_mod <- unlist(str_split(par$var_mod, ";"))
+      pglyco_config <- updateModifications(pglyco_config = pglyco_config,
+                                           mod_name = "var",
+                                           mods = var_mod)
+      
+      # check if variable modifications are defined
+      if(!checkParsPGlyco(par_file = "modify.ini", par = var_mod)){
+        
+        message("Not all modifications ",
+                paste0(var_mod, collapse = " "), " are defined")
+        writeLog(log_gb,
+                 new1 = paste0("Not all modifications defined"),
+                 new2 = paste0(var_mod, collapse = " "))
+        stop()
+        
+      }
+      
+      # set fixed modifications
+      fix_mod <- unlist(str_split(par$fixed_mod, ";"))
+      reporter_ion <- par$reporter_ion
+      
+      # the reporter_ion_type parameter for RawTools
+      if(reporter_ion != "not_labeled"){
+
+        if(reporter_ion == "TMT0"){
+
+          fix_mod_rep <- "TMT"
+
+        } else {
+
+          fix_mod_rep <- paste0(reporter_ion, "plex")
+
+        }
+        
+        fix_mod_rep <- paste0(fix_mod_rep, c("[K]", "[AnyN-term]"))
+        fix_mod <- c(fix_mod,  fix_mod_rep)
+
+      }
+      
+      pglyco_config <- updateModifications(pglyco_config = pglyco_config,
+                                           mod_name = "fix",
+                                           mods = fix_mod)
+      
+      # check if fixed modifications are defined
+      if(!checkParsPGlyco(par_file = "modify.ini", par = fix_mod)){
+        
+        message("Not all modifications ",
+                paste0(fix_mod, collapse = " "), " are defined")
+        writeLog(log_gb,
+                 new1 = paste0("Not all modifications defined"),
+                 new2 = paste0(fix_mod, collapse = " "))
+        stop()
+        
+      }
       
       # number of processes
       pglyco_config[grepl("^process=", pglyco_config)] <- paste0("process=1")
@@ -1946,10 +2106,13 @@ local({
       
       #output_dir
       out_dir <- normalizePath(out_dir, winslash = "\\")
-      pglyco_config[grepl("^output_dir=", pglyco_config)] <- paste0("output_dir=",
-                                                                    out_dir)
+      out_dir_ <- paste0("output_dir=", out_dir)
+      pglyco_config[grepl("^output_dir=", pglyco_config)] <- out_dir_
       
       # file to process
+      file_name <- paste0("pparse_output/",
+                          gsub("\\.raw$", "_pParse_mod.mgf", file_name))
+      
       # spectrum_total line should be the last line before file paths
       spectrum_total_line <- which(grepl("^spectrum_total=", pglyco_config))
       pglyco_config <- pglyco_config[1:spectrum_total_line] 
@@ -1977,16 +2140,37 @@ local({
                               '"', paste0(out_dir, "/pGlycoDB-GP.txt"), '"')
       cmd_pglycopro <- paste0('pGlycoProInfer.exe ',
                               '"', pglyco_config_file, '"')
-      
       shell(cmd = paste0(cmd_pglycodb,
-                         ' && ',
-                         cmd_pglycofdr,
-                         ' && ',
-                         cmd_pglycopro,
-                         ' && echo "done" >> ',
-                         '"', out_dir, '/done.txt', '"'
-                         ),
-            wait = FALSE, ignore.stdout = TRUE)
+                           ' && ',
+                           cmd_pglycofdr,
+                           ' && ',
+                           cmd_pglycopro,
+                           ' && echo "done" >> ',
+                           '"', out_dir, '/done.txt', '"'
+                           ),
+              wait = FALSE, ignore.stdout = TRUE, ignore.stderr = FALSE)
+
+      # res <- shell(cmd = paste0(cmd_pglycodb,
+      #                      ' && ',
+      #                      cmd_pglycofdr,
+      #                      ' && ',
+      #                      cmd_pglycopro,
+      #                      ' && echo "done" >> ',
+      #                      '"', out_dir, '/done.txt', '"'
+      #                      ),
+      #         wait = FALSE, ignore.stdout = TRUE, ignore.stderr = FALSE)
+      # 
+      # if(res != 0){
+      #   
+      #   message("Failed to process ", process_file)
+      #   message("Write empty  output file")
+      #   writeLog(log_gb,
+      #            new1 = paste0("Failed to process ", process_file),
+      #            new2 = paste0("Error code 0", res))
+      #   writeLines("", paste0(out_dir, "/pGlycoDB-GP-FDR-Pro.txt"))
+      #   writeLines("Failed", paste0(out_dir, "/done.txt"))
+      #   
+      #   }
       
       # switch back to the original directory
       setwd(wd)
@@ -2010,16 +2194,11 @@ local({
       
     }
     
-    configPGlyco <- function(pglyco_task = "pGlyco_task.pglyco",
-                             pglyco_settings = "default",
+    configPGlyco <- function(pglyco_config,
                              fasta.name,
                              pglyco_version,
                              nr_threads,
-                             wd,
-                             reporter_ion,
-                             file_names){
-      
-      pglyco_config <- readLines(pglyco_task)
+                             wd){
       
       # pglyco version
       pglyco_version <- paste0("pGlyco_version=", pglyco_version)
@@ -2042,43 +2221,7 @@ local({
         
       )
       pglyco_config[grepl("^output_dir=", pglyco_config)] <- output_dir
-      
-      if(pglyco_settings == "default"){
-        
-        # fixed modifications should match
-        # the reporter_ion_type parameter for RawTools
-        if(reporter_ion != "not_labeled"){
-          
-          if(reporter_ion == "TMT0"){
-            
-            fixed_mod_reporter <- "TMT"
-            
-          } else {
-            
-            fixed_mod_reporter <- paste0(reporter_ion, "plex")
-            
-          }
-          
-          pglyco_config[grepl("^fix2=", pglyco_config)] <- paste0("fix2=", fixed_mod_reporter, "[K]")
-          pglyco_config[grepl("^fix3=", pglyco_config)] <- paste0("fix3=", fixed_mod_reporter, "[AnyN-term]")
-          
-        }
-        
-      }
-      
-      # total number of files to analyze
-      spectrum_total <- paste0("spectrum_total=", length(raw_file_names))
-      pglyco_config[grepl("^spectrum_total=", pglyco_config)] <- spectrum_total
-      
-      # add paths to files to analyze
-      # should be the last line before file paths
-      last_line <- which(grepl("^spectrum_total=", pglyco_config))
-      pglyco_config <- pglyco_config[1:last_line]
-      
-      file_names <- paste0("file", seq_along(file_names), "=", wd,
-                           "/pparse_output/", file_names)
-      pglyco_config <- c(pglyco_config, file_names)  
-      
+
       return(pglyco_config)
       
     }
@@ -2093,46 +2236,25 @@ local({
     setwd(wd)
     if(verbose) message("pGlyco version ", pglyco_version)
     
-    # check if configuration file already exists.
-    # If not, modify the template accordingly
-    pglyco_settings <- "custom"
-    if(!file.exists("pGlyco_task.pglyco")){
-      
-      message("pGlyco config file not found. Use default pGlyco settings")
-      pglyco_settings <- "default"
-      writeLines(pglyco_config_default, "pGlyco_task.pglyco")
-      
-    }
-    pglyco_config <- configPGlyco(pglyco_task = "pGlyco_task.pglyco",
-                                  pglyco_settings = pglyco_settings,
+    pglyco_config <- configPGlyco(pglyco_config = pglyco_config_default,
                                   fasta.name = fasta.name,
                                   pglyco_version = pglyco_version,
                                   nr_threads = nr_threads,
-                                  wd = wd,
-                                  reporter_ion = reporter_ion,
-                                  file_names = gsub(".raw$", "",
-                                                    raw_file_names))
-    writeLines(pglyco_config, "pGlyco_task.pglyco")
+                                  wd = wd)
     
-    # number of files to process
-    # nr_files <- length(raw_file_names)
-
-    # file names to process
-    files_to_process <- paste0("pparse_output/",
-                               gsub("\\.raw$",
-                                    "_pParse_mod.mgf",
-                                    raw_file_names))
-
-    mltSession(files_to_process =  files_to_process,
+    mltSession(files_to_process =  raw_file_names,
                nr_threads = nr_threads,
                tool_name = "pglyco",
                FUN = "run_pglyco",
                wd = wd,
                pglyco_config = pglyco_config,
                pglyco_path = pglyco_path,
+               df_groups = df_groups,
+               df_par = df_par,
                #envir = environment(run_pglyco),
                verbose = verbose)
     
+    # combine pglyco output files
     df_pglyco <- data.table()
     for(i in seq_along(raw_file_names)){
       
@@ -2189,7 +2311,8 @@ local({
                   fasta.name = fasta.name,
                   nr_threads = nr_threads,
                   wd = wd,
-                  reporter_ion = reporter_ion)
+                  df_groups = df_groups,
+                  df_par = df_par)
     
     if(verbose) print(proc.time() - ptm)
     writeLog(log_gb, new1 = paste0("Run pGlyco"),
@@ -2252,7 +2375,8 @@ local({
                     fasta.name = fasta.name.sub,
                     nr_threads = nr_threads,
                     wd = wd,
-                    reporter_ion = reporter_ion,
+                    df_groups = df_groups,
+                    df_par = df_par,
                     pglyco_output = "pGlycoDB-GP-FDR-Pro2.txt")
         
       if(verbose) print(proc.time() - ptm)
@@ -2513,12 +2637,24 @@ local({
                          value.var = c(int_names, mion_names),
                          sep = ".Group_")
   
-  int_names_groups <- paste0(rep(int_names, length(groups)), ".Group_", groups)
-  int_names <- c(int_names, int_names_groups)
+  int_names_base <- int_names
+  for(i in seq_along(groups)){
+    
+    int_names_groups <- paste0(int_names_base, ".Group_", groups[i])
+    int_names <- c(int_names, int_names_groups)
+    
+  }
+  int_names <- int_names[int_names %in% names(df_scans_wide)]
   
-  mion_names_groups <- paste0(rep(mion_names, length(groups)), ".Group_", groups)
-  mion_names <- c(mion_names, mion_names_groups)
-  
+  mion_names_base <- mion_names
+  for(i in seq_along(groups)){
+    
+    mion_names_groups <- paste0(mion_names_base, ".Group_", groups[i])
+    mion_names <- c(mion_names, mion_names_groups)
+    
+  }
+  mion_names <- mion_names[mion_names %in% names(df_scans_wide)]
+
   df_scans_wide <- merge(df_scans, df_scans_wide, by = "id")
   
   aggregateData  <- function(data, by, f, cols){
