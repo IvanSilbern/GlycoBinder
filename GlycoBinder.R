@@ -485,6 +485,52 @@ check_core_fucose <- function(df, scans){
 }
 
 # aggregate parent peak areas
+# addPeakArea <- function(df, scans, FUN = "sum"){
+#   
+#   df_ids <- df$id 
+#   scans_ids <- lapply(str_split(df$pGlyco_ids, pattern = "[;/]"), as.integer)
+#   #pgs <- lapply(ids, function(x) scans[id %in% x]$Parameter_group)
+#   
+#   area <- rbindlist(lapply(seq_along(scans_ids), function(i){
+#     
+#     if(all(is.na(scans_ids[[i]]))) return(data.table(df_id = df_ids[i]))
+#     
+#     ppa <- scans[id %in% scans_ids[[i]],
+#                  c("RawName", "Peptide", "Glycan(H.N.A.G.F)",
+#                    "PrecursorMZ", "PrecursorCharge",
+#                    "ParentPeakArea", "Parameter_group")]
+#     ppa[, PrecursorMZ := signif(PrecursorMZ, 5)]
+#     ppa <- ppa[order(-ParentPeakArea)]
+#     ppa <- ppa[, .(ParentPeakArea = eval(
+#       
+#       call(get("FUN"), ParentPeakArea, na.rm = TRUE)
+#       
+#       )), by = Parameter_group]
+#     
+#     ppa[, df_id := df_ids[i]]
+#     #ppa <- ppa[!duplicated(ppa[, -c("ParentPeakArea")])]$ParentPeakArea
+#     ppa <- dcast(ppa, df_id ~ Parameter_group, value.var = "ParentPeakArea",
+#                  sep = ".Group_", drop = FALSE) 
+#     
+#     f <- function(x) x != "df_id"
+#     ppa_names <- paste0("ParentPeakArea.Group_", Filter(f, names(ppa)))
+#     names(ppa)[names(ppa) %in% Filter(f, names(ppa))] <- ppa_names
+#     
+#     return(ppa)
+#     
+#   }), fill = TRUE)
+#   
+#   if(!any(grepl("ParentPeakArea", names(area)))){
+#     
+#     area[, paste0("ParentPeakArea.Group_", groups) := 0]
+#     
+#     }
+#   
+#   df <- merge(df, area, by.x = "id", by.y = "df_id", all.x = TRUE)
+#   return(df)
+#   
+# }
+
 addPeakArea <- function(df, scans, FUN = "sum"){
   
   df_ids <- df$id 
@@ -496,16 +542,21 @@ addPeakArea <- function(df, scans, FUN = "sum"){
     if(all(is.na(scans_ids[[i]]))) return(data.table(df_id = df_ids[i]))
     
     ppa <- scans[id %in% scans_ids[[i]],
-                 c("RawName", "Peptide", "Glycan(H.N.A.G.F)",
+                 c("RawName", "Peptide", "Mod", "Glycan(H.N.A.G.F)",
                    "PrecursorMZ", "PrecursorCharge",
                    "ParentPeakArea", "Parameter_group")]
     ppa[, PrecursorMZ := signif(PrecursorMZ, 5)]
     ppa <- ppa[order(-ParentPeakArea)]
+    ppa <- ppa[!duplicated(ppa[, c("RawName",
+                                   "Peptide",
+                                   "Mod",
+                                   "Glycan(H.N.A.G.F)",
+                                   "PrecursorCharge")])]
     ppa <- ppa[, .(ParentPeakArea = eval(
       
       call(get("FUN"), ParentPeakArea, na.rm = TRUE)
       
-      )), by = Parameter_group]
+    )), by = Parameter_group]
     
     ppa[, df_id := df_ids[i]]
     #ppa <- ppa[!duplicated(ppa[, -c("ParentPeakArea")])]$ParentPeakArea
@@ -524,12 +575,13 @@ addPeakArea <- function(df, scans, FUN = "sum"){
     
     area[, paste0("ParentPeakArea.Group_", groups) := 0]
     
-    }
+  }
   
   df <- merge(df, area, by.x = "id", by.y = "df_id", all.x = TRUE)
   return(df)
   
 }
+
 
 # convert reporter ion intensities into %
 percentIntensity <- function(df, int_names){
@@ -2818,7 +2870,7 @@ local({
   list_ids <- str_split(sw_modpept$id, ";")
   list_ids <- lapply(list_ids, as.numeric)
   
-  aggregateIds <- function(dt, start_id){
+  aggregateIds <- function(list_ids, start_id){
     
     # The function checks which sequence windows (elements of the list)
     # contain shared peptide ids 
